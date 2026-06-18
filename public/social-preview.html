@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<!--
+  Source for the GitHub social preview image (the card shown when a repo
+  link is posted on Twitter/LinkedIn/Slack/etc.). GitHub does not render
+  HTML for the preview — the file here is the *template*. To regenerate
+  the PNG and upload it:
+
+    1. Open this file in a browser (e.g. /social-preview.html on a local
+       dev server, or directly via file://).
+    2. DevTools (F12) -> Toggle device toolbar (Ctrl+Shift+M).
+    3. Set viewport to 1280 x 640, DPR 2.
+    4. DevTools menu (...) -> "Capture screenshot" or "Capture full size
+       screenshot". Save as PNG.
+    5. GitHub repo -> Settings -> General -> Social preview -> Edit ->
+       upload the PNG.
+
+  Edit this file when the brand, tagline, version, or tech stack chips
+  change — then re-export.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Team Repository — Social Preview</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #6366f1;
+      --accent2: #818cf8;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --label: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      width: 1280px;
+      height: 640px;
+      overflow: hidden;
+    }
+    .card {
+      width: 1280px;
+      height: 640px;
+      padding: 72px 88px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background:
+        radial-gradient(ellipse 800px 500px at 80% 20%, rgba(99, 102, 241, 0.18), transparent 60%),
+        radial-gradient(ellipse 600px 400px at 10% 90%, rgba(129, 140, 248, 0.10), transparent 60%),
+        var(--bg);
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(46, 51, 80, 0.4) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(46, 51, 80, 0.4) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 30%, transparent 80%);
+      pointer-events: none;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      z-index: 2;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 14px;
+      color: var(--label);
+      font-weight: 500;
+    }
+    .badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+    .badge.license {
+      color: #86efac;
+      border-color: #14532d;
+      background: rgba(20, 83, 45, 0.3);
+    }
+    .badge.version {
+      color: #93c5fd;
+      border-color: #1e3a5f;
+      background: rgba(30, 58, 95, 0.3);
+      font-family: 'Consolas', 'Courier New', monospace;
+    }
+
+    .hero {
+      position: relative;
+      z-index: 2;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin: 32px 0;
+    }
+    h1 {
+      font-size: 92px;
+      font-weight: 800;
+      letter-spacing: -2px;
+      line-height: 1;
+      background: linear-gradient(135deg, #ffffff 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .tagline {
+      font-size: 28px;
+      color: var(--label);
+      margin-top: 24px;
+      font-weight: 400;
+      max-width: 1000px;
+      line-height: 1.35;
+    }
+    .tagline strong {
+      color: var(--accent2);
+      font-weight: 600;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 36px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: 'Consolas', 'Courier New', monospace;
+      border: 1px solid transparent;
+    }
+    .chip .cdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .chip-blue   { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .chip-blue   .cdot { background: #3b82f6; }
+    .chip-cyan   { background: #0c3344; border-color: #06b6d4; color: #67e8f9; }
+    .chip-cyan   .cdot { background: #06b6d4; }
+    .chip-purple { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
+    .chip-purple .cdot { background: #8b5cf6; }
+    .chip-orange { background: #431407; border-color: #f97316; color: #fdba74; }
+    .chip-orange .cdot { background: #f97316; }
+    .chip-pink   { background: #4a044e; border-color: #ec4899; color: #f9a8d4; }
+    .chip-pink   .cdot { background: #ec4899; }
+
+    .footer {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .url {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 18px;
+      color: var(--muted);
+    }
+    .url .slash { color: var(--border); margin: 0 4px; }
+    .url .repo { color: var(--accent2); font-weight: 600; }
+    .author {
+      font-size: 15px;
+      color: var(--muted);
+    }
+    .author strong { color: var(--label); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="top">
+      <span class="badge"><span class="dot"></span>Open source</span>
+      <span class="badge license">MIT License</span>
+      <span class="badge version">v0.1.0</span>
+    </div>
+
+    <div class="hero">
+      <h1>Team Repository</h1>
+      <div class="tagline">
+        Self-hosted <strong>architecture catalog</strong> with AI-assisted diagram generation.
+        Components, diagrams, and metadata — versioned in your own GitHub repo.
+      </div>
+      <div class="chips">
+        <span class="chip chip-blue"><span class="cdot"></span>Next.js 14</span>
+        <span class="chip chip-cyan"><span class="cdot"></span>TypeScript</span>
+        <span class="chip chip-purple"><span class="cdot"></span>Anthropic Claude</span>
+        <span class="chip chip-orange"><span class="cdot"></span>GitHub-backed</span>
+        <span class="chip chip-pink"><span class="cdot"></span>Mermaid + draw.io</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="url">
+        github.com<span class="slash">/</span>jazzwedz<span class="slash">/</span><span class="repo">arch-tool</span>
+      </div>
+      <div class="author">by <strong>Jaso Novocel</strong> · IT Governance &amp; Enterprise Architecture</div>
+    </div>
+  </div>
+</body>
+</html>

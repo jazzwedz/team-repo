@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest a new feature or improvement.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case before suggesting the solution.
+      placeholder: As a BA, I want to see which capabilities a component owns vs. supports, so that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      placeholder: A new column in the Capabilities table, or a separate view, or ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you ruled out and why.
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who is this for?
+      multiple: true
+      options:
+        - DEV (engineers)
+        - BA (business analysts)
+        - Ops / SRE
+        - Management
+        - Maintainer / contributor
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, mockups, links to similar features in other tools.

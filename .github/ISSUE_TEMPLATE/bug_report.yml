@@ -1,0 +1,75 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in as much of the
+        following as you can — the more we have, the faster we can help.
+
+        **Security issues should NOT be filed here.** See [SECURITY.md](../blob/main/SECURITY.md)
+        for the private disclosure flow.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: When I clicked "Publish to Confluence", I got a 500 with no useful error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps a maintainer can follow.
+      placeholder: |
+        1. Open `/component/foo`
+        2. Go to the Documentation tab
+        3. Click "Publish to Confluence"
+        4. See error toast
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: A successful publish, or a clear error message.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit SHA
+      placeholder: "e.g. b1e88c3 or v0.1.0"
+
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: How are you running it?
+      options:
+        - Self-hosted on my machine (npm run dev)
+        - Self-hosted on Railway / Vercel / other PaaS
+        - Docker
+        - Other (describe below)
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Browser, OS, Node version, any non-default env vars.
+      placeholder: |
+        - Browser: Chrome 131
+        - OS: Windows 11
+        - Node: 20.18
+        - Confluence integration: enabled
+        - LLM gateway: stock Anthropic
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste relevant logs in a fenced code block. Redact secrets.

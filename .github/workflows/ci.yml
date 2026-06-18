@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Default to least privilege — CI just needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint · Typecheck · Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npx next lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          # CI build does not need real secrets — but Next.js requires
+          # the env block to be parseable. Provide harmless placeholders
+          # so route handlers that read process.env at module load don't
+          # blow up during prerender.
+          GITHUB_TOKEN: ci-placeholder
+          GITHUB_OWNER: ci
+          GITHUB_REPO: ci-data
+          GITHUB_BRANCH: main
+          ANTHROPIC_API_KEY: sk-ant-ci-placeholder
+          SITE_PASSWORD: ci-placeholder

@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Repository — Architecture Overview</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #6366f1;
+      --accent2: #818cf8;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --cyan: #06b6d4;
+      --pink: #ec4899;
+      --orange: #f97316;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --label: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      padding: 40px 32px;
+      min-height: 100vh;
+    }
+    header { text-align: center; margin-bottom: 56px; }
+    header h1 {
+      font-size: 30px; font-weight: 700; color: var(--accent2);
+      letter-spacing: -0.5px;
+    }
+    header .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
+    header .meta {
+      margin-top: 14px; font-size: 11px; color: var(--muted);
+      display: inline-flex; gap: 14px; align-items: center;
+      padding: 6px 14px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 999px;
+    }
+    header .meta a { color: #93c5fd; text-decoration: none; }
+    header .meta .sep { color: var(--border); }
+
+    .section-title {
+      font-size: 11px; font-weight: 600; color: var(--label);
+      text-transform: uppercase; letter-spacing: 1.5px;
+      margin-bottom: 24px; padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title::before {
+      content: ''; display: inline-block;
+      width: 3px; height: 14px; background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .diagram-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 48px;
+      overflow-x: auto;
+    }
+
+    .stack { display: flex; flex-direction: column; gap: 12px; max-width: 980px; margin: 0 auto; }
+    .layer { display: flex; align-items: stretch; gap: 0; border-radius: 12px; overflow: hidden; min-height: 72px; }
+    .layer-label {
+      writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+      color: #fff; padding: 12px 10px; min-width: 36px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .layer-content {
+      flex: 1; display: flex; align-items: center; flex-wrap: wrap;
+      gap: 10px; padding: 14px 20px; background: var(--surface2);
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 500; border: 1px solid transparent;
+    }
+    .chip .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .chip-note { font-size: 10px; color: var(--muted); margin-left: 2px; }
+
+    .l-client    .layer-label { background: #374151; }
+    .l-frontend  .layer-label { background: #1d4ed8; }
+    .l-api       .layer-label { background: #0e7490; }
+    .l-data      .layer-label { background: #15803d; }
+    .l-ai        .layer-label { background: #7c3aed; }
+    .l-ext       .layer-label { background: #be185d; }
+    .l-infra     .layer-label { background: #b45309; }
+
+    .chip-blue   { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .chip-blue   .dot { background: #3b82f6; }
+    .chip-cyan   { background: #0c3344; border-color: #06b6d4; color: #67e8f9; }
+    .chip-cyan   .dot { background: #06b6d4; }
+    .chip-green  { background: #14532d; border-color: #22c55e; color: #86efac; }
+    .chip-green  .dot { background: #22c55e; }
+    .chip-purple { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
+    .chip-purple .dot { background: #8b5cf6; }
+    .chip-orange { background: #431407; border-color: #f97316; color: #fdba74; }
+    .chip-orange .dot { background: #f97316; }
+    .chip-gray   { background: #1f2937; border-color: #4b5563; color: #9ca3af; }
+    .chip-gray   .dot { background: #9ca3af; }
+    .chip-pink   { background: #4a044e; border-color: #ec4899; color: #f9a8d4; }
+    .chip-pink   .dot { background: #ec4899; }
+    .chip-yellow { background: #3b2504; border-color: #f59e0b; color: #fcd34d; }
+    .chip-yellow .dot { background: #f59e0b; }
+    .chip-red    { background: #450a0a; border-color: #ef4444; color: #fca5a5; }
+    .chip-red    .dot { background: #ef4444; }
+
+    .layer-arrow { text-align: center; color: var(--muted); font-size: 18px; line-height: 1; margin: -4px 0; }
+
+    .app-grid {
+      display: grid;
+      grid-template-columns: 240px 1fr 240px;
+      gap: 16px;
+      max-width: 1100px; margin: 0 auto;
+    }
+    .box {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .box-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+      color: var(--muted); margin-bottom: 10px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .box-title .badge {
+      font-size: 9px; padding: 1px 6px; border-radius: 4px; font-weight: 600;
+      background: #1e3a5f; color: #93c5fd;
+    }
+    .route-item {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+    }
+    .route-item:last-child { border-bottom: none; }
+    .method {
+      font-size: 9px; font-weight: 700; padding: 2px 5px;
+      border-radius: 3px; flex-shrink: 0; margin-top: 1px;
+    }
+    .GET    { background: #14532d; color: #86efac; }
+    .POST   { background: #1e3a5f; color: #93c5fd; }
+    .PUT    { background: #431407; color: #fdba74; }
+    .DELETE { background: #450a0a; color: #fca5a5; }
+    .route-path { font-family: 'Consolas', monospace; color: var(--label); flex: 1; word-break: break-all; }
+    .route-desc { color: var(--muted); font-size: 11px; }
+
+    .ext-service { padding: 12px 14px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; }
+    .ext-service:last-child { margin-bottom: 0; }
+    .ext-title { font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .ext-detail { font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .ext-github  { background: #1f2937; border: 1px solid #374151; }
+    .ext-ai      { background: #1a0b2e; border: 1px solid #6d28d9; }
+    .ext-confl   { background: #0c2340; border: 1px solid #1d4ed8; }
+    .ext-drawio  { background: #1a1000; border: 1px solid #92400e; }
+    .ext-deploy  { background: #261605; border: 1px solid #b45309; }
+
+    .model-fields { font-family: 'Consolas', monospace; font-size: 11px; color: var(--label); line-height: 1.85; }
+    .field-type { color: var(--cyan); }
+    .field-opt  { color: var(--muted); }
+    .field-key  { color: var(--accent2); }
+
+    .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .tab {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px; padding: 14px 16px;
+    }
+    .tab-name { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .tab-desc { font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .tab-tag {
+      display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 4px; margin-left: 8px;
+    }
+    .t-dev { background: #1e3a5f; color: #93c5fd; }
+    .t-ba  { background: #14532d; color: #86efac; }
+    .t-all { background: #2e1065; color: #c4b5fd; }
+    .t-ops { background: #431407; color: #fdba74; }
+
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .feature {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    .feature-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+    .feature-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+    .feature-name { font-size: 14px; font-weight: 700; color: var(--text); }
+    .feature-tag { font-size: 9px; color: var(--muted); margin-top: 2px; }
+    .feature-body { font-size: 12px; color: var(--muted); line-height: 1.65; }
+
+    .env-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .env-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px;
+    }
+    .env-card h4 { font-size: 12px; font-weight: 700; margin-bottom: 8px; color: var(--accent2); }
+    .env-var { font-family: 'Consolas', monospace; font-size: 11px; color: var(--label); line-height: 1.8; }
+    .env-var .name { color: #fcd34d; }
+
+    .port-callout {
+      background: linear-gradient(135deg, #1a1040 0%, #0c2340 100%);
+      border: 1px solid var(--accent);
+      border-radius: 12px; padding: 24px; margin-bottom: 24px;
+    }
+    .port-phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .port-phase {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px;
+    }
+    .port-phase-name { font-size: 13px; font-weight: 700; color: var(--accent2); margin-bottom: 4px; }
+    .port-phase-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      margin-top: 24px; padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    .icon { font-size: 14px; }
+    code { font-family: 'Consolas', monospace; font-size: 11px; color: var(--cyan); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Team Repository — Architecture Overview</h1>
+  <div class="subtitle">Tech Stack · App Map · Component Model · Feature Tabs · Confluence Integration · Deployment · Port to Corp</div>
+  <div class="meta">
+    <span>App: <a href="https://arch-tool-jaso.up.railway.app/">arch-tool-jaso.up.railway.app</a></span>
+    <span class="sep">·</span>
+    <span>Code: <a href="https://github.com/jazzwedz/arch-tool">jazzwedz/arch-tool</a></span>
+    <span class="sep">·</span>
+    <span>Data: <a href="https://github.com/jazzwedz/arch-data">jazzwedz/arch-data</a></span>
+  </div>
+</header>
+
+<div class="section-title">Diagram 1 — Tech Stack</div>
+<div class="diagram-wrap">
+  <div class="stack">
+
+    <div class="layer l-client">
+      <div class="layer-label">Client</div>
+      <div class="layer-content">
+        <span class="chip chip-gray"><span class="dot"></span>Browser</span>
+        <span class="chip chip-gray"><span class="dot"></span>React Server Components <span class="chip-note">RSC</span></span>
+        <span class="chip chip-gray"><span class="dot"></span>React Client Components <span class="chip-note">'use client'</span></span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-frontend">
+      <div class="layer-label">Frontend</div>
+      <div class="layer-content">
+        <span class="chip chip-blue"><span class="dot"></span>Next.js 14.2 <span class="chip-note">App Router</span></span>
+        <span class="chip chip-blue"><span class="dot"></span>TypeScript 5</span>
+        <span class="chip chip-cyan"><span class="dot"></span>Tailwind CSS 3.4</span>
+        <span class="chip chip-cyan"><span class="dot"></span>shadcn/ui</span>
+        <span class="chip chip-cyan"><span class="dot"></span>Radix UI</span>
+        <span class="chip chip-cyan"><span class="dot"></span>lucide-react</span>
+        <span class="chip chip-blue"><span class="dot"></span>js-yaml</span>
+        <span class="chip chip-pink"><span class="dot"></span>mermaid 11</span>
+        <span class="chip chip-pink"><span class="dot"></span>marked</span>
+        <span class="chip chip-pink"><span class="dot"></span>react-markdown <span class="chip-note">+ remark-gfm</span></span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-api">
+      <div class="layer-label">API</div>
+      <div class="layer-content">
+        <span class="chip chip-cyan"><span class="dot"></span>Next.js Route Handlers</span>
+        <span class="chip chip-cyan"><span class="dot"></span>middleware.ts <span class="chip-note">password gate + CSRF</span></span>
+        <span class="chip chip-cyan"><span class="dot"></span>Rate limit <span class="chip-note">in-memory 5/min/IP</span></span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-data">
+      <div class="layer-label">Data</div>
+      <div class="layer-content">
+        <span class="chip chip-green"><span class="dot"></span>octokit 5 <span class="chip-note">GitHub REST + git trees</span></span>
+        <span class="chip chip-green"><span class="dot"></span>arch-data repo <span class="chip-note">jazzwedz/arch-data</span></span>
+        <span class="chip chip-green"><span class="dot"></span>YAML per component <span class="chip-note">/components/{id}.yaml</span></span>
+        <span class="chip chip-green"><span class="dot"></span>Drawio diagrams <span class="chip-note">/diagrams/{name}.drawio</span></span>
+        <span class="chip chip-green"><span class="dot"></span>Confluence link side-files <span class="chip-note">/confluence-links/{id}.json</span></span>
+        <span class="chip chip-gray"><span class="dot"></span>No DB — Git as storage</span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-ai">
+      <div class="layer-label">AI</div>
+      <div class="layer-content">
+        <span class="chip chip-purple"><span class="dot"></span>@anthropic-ai/sdk 0.80</span>
+        <span class="chip chip-pink"><span class="dot"></span>Claude Sonnet 4 <span class="chip-note">claude-sonnet-4-20250514</span></span>
+        <span class="chip chip-purple"><span class="dot"></span>Use cases <span class="chip-note">Generate · Blast Radius memo · Pull-smart scan</span></span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-ext">
+      <div class="layer-label">External</div>
+      <div class="layer-content">
+        <span class="chip chip-blue"><span class="dot"></span>Atlassian Cloud Confluence <span class="chip-note">REST v2</span></span>
+        <span class="chip chip-yellow"><span class="dot"></span>Draw.io <span class="chip-note">mxlibrary XML export</span></span>
+      </div>
+    </div>
+    <div class="layer-arrow">↕</div>
+
+    <div class="layer l-infra">
+      <div class="layer-label">Infra</div>
+      <div class="layer-content">
+        <span class="chip chip-orange"><span class="dot"></span>Railway <span class="chip-note">arch-tool service</span></span>
+        <span class="chip chip-orange"><span class="dot"></span>GitHub <span class="chip-note">jazzwedz/arch-tool</span></span>
+        <span class="chip chip-gray"><span class="dot"></span>Env vars <span class="chip-note">see Deployment</span></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-title">Diagram 2 — App Map (Routes · API · Integrations)</div>
+<div class="diagram-wrap">
+  <div class="app-grid">
+
+    <div class="box">
+      <div class="box-title"><span class="icon">🖥</span> Pages <span class="badge">App Router</span></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/login</div><div class="route-desc">Password gate</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/</div><div class="route-desc">Catalog (cards / tiles / list)</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/component/[id]</div><div class="route-desc">Detail — 7 tabs</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/edit/[id]</div><div class="route-desc">Edit component form</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/new</div><div class="route-desc">Create component</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/diagrams</div><div class="route-desc">Diagram list + preview</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/diagrams/builder</div><div class="route-desc">WYSIWYG drawio builder</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/generate</div><div class="route-desc">Diagram-level doc gen</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/export</div><div class="route-desc">Drawio library guide</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/architecture.html</div><div class="route-desc">This page</div></div></div>
+    </div>
+
+    <div class="box">
+      <div class="box-title"><span class="icon">⚡</span> API Route Handlers</div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/auth/login</div><div class="route-desc">Password → cookie</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/components</div><div class="route-desc">List all</div></div></div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/components</div><div class="route-desc">Create</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/components/[id]</div><div class="route-desc">Read</div></div></div>
+      <div class="route-item"><span class="method PUT">PUT</span><div><div class="route-path">/api/components/[id]</div><div class="route-desc">Update</div></div></div>
+      <div class="route-item"><span class="method DELETE">DELETE</span><div><div class="route-path">/api/components/[id]</div><div class="route-desc">Delete</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/components/[id]/history</div><div class="route-desc">Git commit log</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/components/[id]/diagrams</div><div class="route-desc">Refs from diagrams</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/components/[id]/blast-radius</div><div class="route-desc">Reverse-graph BFS</div></div></div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/components/[id]/blast-radius/memo</div><div class="route-desc">AI Impact Memo</div></div></div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/generate</div><div class="route-desc">AI doc (audience / doctype)</div></div></div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/confluence/publish</div><div class="route-desc">Render + publish page</div></div></div>
+      <div class="route-item"><span class="method POST">POST</span><div><div class="route-path">/api/confluence/pull-smart</div><div class="route-desc">AI scan → patches</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/confluence/status</div><div class="route-desc">Per-component sync state</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/diagrams · /[name] · /preview</div><div class="route-desc">CRUD + render</div></div></div>
+      <div class="route-item"><span class="method GET">GET</span><div><div class="route-path">/api/export/drawio</div><div class="route-desc">mxlibrary XML</div></div></div>
+    </div>
+
+    <div>
+      <div class="ext-service ext-github">
+        <div class="ext-title"><span>🐙</span> GitHub (arch-data)</div>
+        <div class="ext-detail">
+          repo: jazzwedz/arch-data<br>
+          branch: main<br>
+          auth: GITHUB_TOKEN (PAT)<br>
+          format: YAML per file<br>
+          structure: components/ · diagrams/ · confluence-links/
+        </div>
+      </div>
+
+      <div class="ext-service ext-ai">
+        <div class="ext-title"><span>🤖</span> Anthropic Claude</div>
+        <div class="ext-detail">
+          model: claude-sonnet-4-20250514<br>
+          SDK: @anthropic-ai/sdk 0.80<br>
+          auth: ANTHROPIC_API_KEY<br>
+          3 use cases (docs · memo · pull scan)
+        </div>
+      </div>
+
+      <div class="ext-service ext-confl">
+        <div class="ext-title"><span>📘</span> Confluence Cloud</div>
+        <div class="ext-detail">
+          base: jasenovec.atlassian.net<br>
+          space: TR (Team Repository)<br>
+          API: REST v2<br>
+          auth: Basic (email + API token)<br>
+          publish + pull bidirectional
+        </div>
+      </div>
+
+      <div class="ext-service ext-drawio">
+        <div class="ext-title"><span>📐</span> Draw.io Export</div>
+        <div class="ext-detail">
+          format: mxlibrary XML<br>
+          20 component types pre-styled<br>
+          9 connector templates<br>
+          drag-and-drop palette
+        </div>
+      </div>
+
+      <div class="ext-service ext-deploy">
+        <div class="ext-title"><span>🚂</span> Railway</div>
+        <div class="ext-detail">
+          service: arch-tool<br>
+          repo: jazzwedz/arch-tool · main<br>
+          url: arch-tool-jaso.up.railway.app<br>
+          auto-deploy on push to main
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#86efac"></div>GET</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#93c5fd"></div>POST</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fdba74"></div>PUT</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fca5a5"></div>DELETE</div>
+  </div>
+</div>
+
+<div class="section-title">Component Model — Catalog Schema</div>
+<div class="diagram-wrap">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+    <div>
+      <div class="box-title" style="margin-bottom:14px"><span class="icon">🔷</span> Core fields</div>
+      <div class="model-fields">
+        <div><span class="field-key">id</span>: <span class="field-type">string</span> <span class="field-opt">// kebab-case · auto-generated from name when omitted</span></div>
+        <div><span class="field-key">name</span>: <span class="field-type">string</span> <span class="field-opt">// the only required field</span></div>
+        <div><span class="field-key">type</span>: <span class="field-type">ComponentType</span> <span class="field-opt">? // default "component"</span></div>
+        <div style="padding-left:20px"><span class="field-opt">20 types: component · service · microservice · frontend · database · table · schema · cache · queue · data-pipeline · batch-job · storage · gateway · external · platform · library · context · boundary · application · module</span></div>
+        <div><span class="field-key">status</span>: <span class="field-type">ComponentStatus</span> <span class="field-opt">? // draft · production · deprecated · default "draft"</span></div>
+        <div><span class="field-key">owner</span>: <span class="field-type">string</span> <span class="field-opt">?</span></div>
+        <div><span class="field-key">tags</span>: <span class="field-type">string[]</span> <span class="field-opt">?</span></div>
+        <div><span class="field-key">description</span>: { description } <span class="field-opt">? // unified — legacy { oneliner · technical · business } auto-migrates on read</span></div>
+        <div><span class="field-key">links</span>: <span class="field-type">ComponentLink[]</span> <span class="field-opt">? // every edge to another component (v2)</span></div>
+        <div style="padding-left:20px"><span class="field-opt">{ target · role · protocol? · name? · description? }</span></div>
+        <div style="padding-left:20px"><span class="field-opt">6 roles, 3 mirror pairs: calls↔serves · part-of↔contains · reads-from↔writes-to</span></div>
+        <div style="padding-left:20px"><span class="field-opt">10 protocols: rest · grpc · async · db · table · file · human · info · link · data</span></div>
+        <div><span class="field-key">risks</span>: <span class="field-type">string[]</span> <span class="field-opt">?</span></div>
+        <div><span class="field-key">nfr</span>: <span class="field-type">ComponentNFR</span> <span class="field-opt">?</span></div>
+        <div style="padding-left:20px"><span class="field-opt">availability · rto · rpo · max_latency · throughput · data_classification (public/internal/confidential/restricted) · scaling (horizontal/vertical/none)</span></div>
+        <div><span class="field-key">data_model</span>: { entity } <span class="field-opt">? // only on type=table — link to external data model registry</span></div>
+        <div><span class="field-key">diagram</span>: <span class="field-type">ComponentDiagram</span> <span class="field-opt">? // color · shape</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="box-title" style="margin-bottom:14px"><span class="icon">🌿</span> Rich modelling fields</div>
+      <div class="model-fields">
+        <div><span class="field-key">capabilities</span>: <span class="field-type">ComponentCapability[]</span> <span class="field-opt">?</span></div>
+        <div style="padding-left:20px"><span class="field-opt">{ name · role · description? }</span></div>
+        <div style="padding-left:20px"><span class="field-opt">role: owner · contributor · consumer · indirect</span></div>
+
+        <div style="margin-top:8px;color:#64748b;font-style:italic">data flow is modelled as <code>links[]</code> with role <code>reads-from</code> / <code>writes-to</code> (the legacy <code>data{}</code> block was removed in v2 — see migration note)</div>
+
+        <div style="margin-top:8px"><span class="field-key">processes</span>: <span class="field-type">ComponentProcess[]</span> <span class="field-opt">?</span></div>
+        <div style="padding-left:20px"><span class="field-opt">{ name · role · activity? · description? }</span></div>
+        <div style="padding-left:20px"><span class="field-opt">role: owner · participant · listener · trigger</span></div>
+
+        <div style="margin-top:8px"><span class="field-key">rules</span>: <span class="field-type">ComponentRule[]</span> <span class="field-opt">? // business logic</span></div>
+        <div style="padding-left:20px"><span class="field-opt">kind: <strong>formula</strong> (expression) · <strong>rule</strong> (Given/When/Then) · <strong>constraint</strong> (invariant + enforced_in)</span></div>
+      </div>
+
+      <div style="margin-top:20px;padding:12px;background:#0c2340;border:1px solid #1d4ed8;border-radius:8px;font-size:11px;color:#93c5fd;line-height:1.6">
+        <strong>Storage:</strong> each component is one <code>{id}.yaml</code> file (<code>schema_version: 2</code>). Git history = audit log. Read-migrate / clean-write: legacy <code>interfaces[] + relationships[] + data{}</code> collapse into <code>links[]</code> on read (<code>data.owns</code> and the DataKind ontology dropped); legacy <code>business_capabilities: string[]</code> → <code>capabilities: [{name, role: indirect}]</code>; legacy <code>description.{oneliner, technical, business}</code> → unified <code>description.description</code>. Saves drop every legacy field.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-title">Component Detail Page — 7 Tabs</div>
+<div class="diagram-wrap">
+  <div style="margin-bottom:20px;padding:14px 18px;background:#1a1d27;border:1px solid #2e3350;border-radius:8px;display:flex;gap:14px;align-items:center;font-size:12px;color:#94a3b8;">
+    <span style="font-size:18px">📊</span>
+    <div>Above every tab: <strong style="color:#e2e8f0">Identity panel</strong> (type · status · owner · tags) + <strong style="color:#e2e8f0">Documentation maturity %</strong> (13 fields scored, banded Skeletal / Drafted / Solid / Complete).</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab">
+      <div class="tab-name">Overview <span class="tab-tag t-all">All</span></div>
+      <div class="tab-desc">Hero Component Context diagram (mermaid: links — calls/serves, part-of/contains, reads-from/writes-to — in one), Details, Descriptions, Risks.</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">Properties <span class="tab-tag t-dev">Dev</span> <span class="tab-tag t-ba">BA</span></div>
+      <div class="tab-desc">Links (with Visualize toggle), Capabilities, Processes, Non-Functional Requirements. Each card has its own per-block Edit dialog. (Merges the former Technical + Business tabs.)</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">Rules &amp; Calculations <span class="tab-tag t-ba">BA</span></div>
+      <div class="tab-desc">Formula cards (monospace), Behavioural rules (Given/When/Then), Constraints (red, with enforced_in component links).</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">Blast Radius <span class="tab-tag t-ops">Ops</span></div>
+      <div class="tab-desc">Reverse-graph BFS over links. Severity HIGH (calls, part-of, reads-from, writes-to) / MEDIUM (others). Stat cards + mermaid graph + layered impact list + AI Impact Memo.</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">Documentation <span class="tab-tag t-all">All</span></div>
+      <div class="tab-desc">Generate (audience or doctype), Confluence (Publish + Open + Pull). YAML round-trip lives in the detail header (Download YAML) and catalog header (Export YAML / Import).</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">Diagrams <span class="tab-tag t-all">All</span></div>
+      <div class="tab-desc">List of diagrams in /diagrams that reference this component (matched by arch_id attribute). Click → open preview modal.</div>
+    </div>
+    <div class="tab">
+      <div class="tab-name">History <span class="tab-tag t-ops">Ops</span></div>
+      <div class="tab-desc">Git commit log for the component's YAML file — who, when, what message. Last 50 commits.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">Feature Highlights</div>
+<div class="diagram-wrap">
+  <div class="features">
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">⚡</div>
+        <div><div class="feature-name">AI Documentation Generator</div>
+        <div class="feature-tag">Claude Sonnet 4 · 3 audiences · 3 doctypes · attachments</div></div>
+      </div>
+      <div class="feature-body">
+        Component or diagram → audience (Technical / Business / Executive) or doctype (Detailed Solution / Audit Report / Security Report). Output is markdown with mermaid blocks rendered client-side. Optional attachments: PDF business req, ERD, BPMN — enrich the prompt.
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">💥</div>
+        <div><div class="feature-name">Blast Radius Analysis</div>
+        <div class="feature-tag">Reverse-graph BFS · NFR gap detection · AI Impact Memo</div></div>
+      </div>
+      <div class="feature-body">
+        Click component → walk reverse-link graph (max depth 3). Direct + transitive impactors, severity per link role, NFR gaps (production without RTO), confidential-data flags. Mermaid graph + layered list. One-click "Generate AI Impact Memo" → 1-page exec-style brief.
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">📤</div>
+        <div><div class="feature-name">Confluence Publish</div>
+        <div class="feature-tag">Storage XHTML · tables + panels · TOC macro</div></div>
+      </div>
+      <div class="feature-body">
+        Renders structured Component Reference (At a glance · Capabilities · Links · Processes · Rules · NFR · Risks) as native Confluence tables. Rules use info / tip / warning panel macros. AI narrative above. Mermaid blocks stripped (no plugin). Hierarchy mirrors first capability.
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">🔄</div>
+        <div><div class="feature-name">Confluence Pull-smart</div>
+        <div class="feature-tag">Claude scan · scalar + indexed rule patches · diff dialog</div></div>
+      </div>
+      <div class="feature-body">
+        AI compares Confluence page text to catalog YAML, proposes field-level patches (scalar fields + indexed <code>rules[N].field</code> paths). Each patch has confidence + evidence quote. User ticks per-patch, "Apply &amp; commit" pushes to arch-data. Bidirectional sync without leaving arch-tool.
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">📐</div>
+        <div><div class="feature-name">WYSIWYG Diagram Builder</div>
+        <div class="feature-tag">drawio palette · 10 protocol connectors · save to repo</div></div>
+      </div>
+      <div class="feature-body">
+        Drag pre-styled components (matching catalog types) onto canvas, click-to-connect with 10 typed connectors (rest · grpc · async · db · table · file · human · info · link · data). Save .drawio XML to <code>diagrams/</code> in arch-data. Each diagram is preview-able as mermaid (drawio → mermaid conversion).
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-head">
+        <div class="feature-icon">📊</div>
+        <div><div class="feature-name">Hero Context Diagram</div>
+        <div class="feature-tag">Per-component mermaid · auto-rendered · link roles</div></div>
+      </div>
+      <div class="feature-body">
+        On every component's Overview tab, an auto-rendered mermaid flowchart combines the component's <code>links[]</code> — calls/serves (APIs), part-of/contains (containment) and reads-from/writes-to (data flow) — in one picture. The view you see first.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-title">Confluence Integration — Bidirectional Sync Flow</div>
+<div class="diagram-wrap">
+  <div style="max-width:960px;margin:0 auto;">
+
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:20px;align-items:stretch;margin-bottom:24px;">
+
+      <div style="background:#0c2340;border:1px solid #1d4ed8;border-radius:10px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📤 Publish flow</div>
+        <ol style="margin:0;padding-left:20px;font-size:12px;color:#cbd5e1;line-height:1.85">
+          <li>Generate AI markdown (or reuse existing draft)</li>
+          <li>Strip mermaid blocks (no plugin in target Confluence)</li>
+          <li>marked → HTML → Confluence storage format</li>
+          <li>Replace manual TOC with native <code>toc</code> macro</li>
+          <li>Append "Component Reference" — auto tables + rule panels</li>
+          <li>Find-or-create capability parent page (page-tree hierarchy)</li>
+          <li>Find existing page (side-file → title fallback) → update; else create</li>
+          <li>Persist side-file <code>confluence-links/{id}.json</code> (best-effort)</li>
+        </ol>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:28px">⇄</div>
+
+      <div style="background:#14532d;border:1px solid #22c55e;border-radius:10px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:#86efac;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📥 Pull-smart flow</div>
+        <ol style="margin:0;padding-left:20px;font-size:12px;color:#cbd5e1;line-height:1.85">
+          <li>Resolve page id (side-file → title-based fallback)</li>
+          <li>Fetch page storage body</li>
+          <li>Convert storage XHTML to plain text (strip macros)</li>
+          <li>Send to Claude with current YAML + editable schema (scalar + <code>rules[N].*</code>)</li>
+          <li>Claude returns JSON: per-field patches with confidence + evidence</li>
+          <li>UI: checkbox dialog (low-confidence unticked by default)</li>
+          <li>Apply selected → validate enums → save YAML → commit to git</li>
+        </ol>
+      </div>
+
+    </div>
+
+    <div style="background:#1a1d27;border:1px solid #2e3350;border-radius:8px;padding:14px 18px;font-size:11px;color:#94a3b8;line-height:1.65">
+      <strong style="color:#e2e8f0">Patch protocol limits today:</strong> scalar fields (name · status · owner · tags · description.* · nfr.*) and indexed rule fields (<code>rules[N].name · kind · summary · description · formula · given · when · then · enforced_in</code>). Out of scope: add/remove rules in Confluence; capabilities · links · processes round-trip — edit those in arch-tool's editor.
+    </div>
+
+  </div>
+</div>
+
+<div class="section-title">Deployment — Railway · Env Vars</div>
+<div class="diagram-wrap">
+  <div class="env-grid">
+
+    <div class="env-card">
+      <h4>GitHub (storage)</h4>
+      <div class="env-var">
+        <span class="name">GITHUB_TOKEN</span>=ghp_… <span class="field-opt">// fine-grained PAT, Contents R/W on arch-data</span><br>
+        <span class="name">GITHUB_OWNER</span>=jazzwedz<br>
+        <span class="name">GITHUB_REPO</span>=arch-data<br>
+        <span class="name">GITHUB_BRANCH</span>=main
+      </div>
+    </div>
+
+    <div class="env-card">
+      <h4>Anthropic Claude</h4>
+      <div class="env-var">
+        <span class="name">ANTHROPIC_API_KEY</span>=sk-ant-…<br>
+        <span class="field-opt">// model hardcoded: claude-sonnet-4-20250514</span>
+      </div>
+    </div>
+
+    <div class="env-card">
+      <h4>Confluence Cloud</h4>
+      <div class="env-var">
+        <span class="name">CONFLUENCE_BASE_URL</span>=https://jasenovec.atlassian.net<br>
+        <span class="name">CONFLUENCE_EMAIL</span>=jasenovec@gmail.com<br>
+        <span class="name">CONFLUENCE_API_TOKEN</span>=ATATT…<br>
+        <span class="name">CONFLUENCE_SPACE_ID</span>=229575<br>
+        <span class="name">CONFLUENCE_SPACE_KEY</span>=TR
+      </div>
+    </div>
+
+    <div class="env-card">
+      <h4>App self-reference</h4>
+      <div class="env-var">
+        <span class="name">ARCH_TOOL_PUBLIC_URL</span>=https://arch-tool-jaso.up.railway.app<br>
+        <span class="name">SITE_PASSWORD</span>=… <span class="field-opt">// password gate (middleware.ts)</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:20px;padding:14px 18px;background:#1a1d27;border:1px solid #2e3350;border-radius:8px;font-size:11px;color:#94a3b8;line-height:1.7;">
+    <strong style="color:#e2e8f0">Deploy:</strong> push to <code>main</code> → Railway auto-builds Next.js → serves on internal port (8080). Public URL via Railway-managed TLS. Single replica (in-memory rate limiter not yet Redis-backed). Watch-branch <code>main</code>; if pushing to <code>master</code>, also push to <code>main</code> for the build to fire.
+  </div>
+</div>
+
+<div class="section-title">Roadmap — Port to Corporate Environment</div>
+<div class="diagram-wrap">
+
+  <div class="port-callout">
+    <div style="font-size:14px;font-weight:700;color:var(--accent2);margin-bottom:10px">Goal</div>
+    <div style="font-size:13px;color:#cbd5e1;line-height:1.7;margin-bottom:14px">
+      Move the running app from Railway + GitHub.com + Anthropic.com + Atlassian Cloud into a regulated corporate environment where storage, LLM access, and auth go through internal endpoints. Code path is largely adapter-swap; the costly part is corporate process (provisioning, security review, sign-offs).
+    </div>
+    <div style="font-size:12px;color:#94a3b8">Total estimate: <strong style="color:#fcd34d">~3.5–5 person-days</strong> assuming prerequisites are done and no corp blocker surfaces. Standalone migration plan + architecture-questions checklist live in <code>Downloads/team-repo-port-*.md</code>.</div>
+  </div>
+
+  <div style="margin-bottom:14px;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Six phases</div>
+  <div class="port-phases">
+    <div class="port-phase">
+      <div class="port-phase-name">A — Foundation</div>
+      <div class="port-phase-desc">Refactor external calls behind interfaces: LLMClient · StorageClient · ConfluenceClient · AuthMiddleware. ~0.5 MD</div>
+    </div>
+    <div class="port-phase">
+      <div class="port-phase-name">B — Storage adapter</div>
+      <div class="port-phase-desc">Implement StorageClient against corp Git provider; bootstrap empty arch-data repo. ~0.5–1 MD</div>
+    </div>
+    <div class="port-phase">
+      <div class="port-phase-name">C — LLM gateway</div>
+      <div class="port-phase-desc">Route all AI calls through corp gateway; re-tune prompts if model isn't Claude-class. ~1 MD</div>
+    </div>
+    <div class="port-phase">
+      <div class="port-phase-name">D — Auth &amp; ingress</div>
+      <div class="port-phase-desc">Swap password gate for SSO (ingress-based header read or SDK). ~0.5 MD</div>
+    </div>
+    <div class="port-phase">
+      <div class="port-phase-name">E — Deploy</div>
+      <div class="port-phase-desc">Containerise, corp secrets / registry / manifests, smoke test in dev + test envs. ~0.5–1 MD</div>
+    </div>
+    <div class="port-phase">
+      <div class="port-phase-name">F — Handover</div>
+      <div class="port-phase-desc">User / admin / runbook docs, prod promote, sign-offs from security · IT ops · line manager. ~0.5 MD</div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;padding:14px 18px;background:#1a0b2e;border:1px solid #6d28d9;border-radius:8px;font-size:11px;color:#c4b5fd;line-height:1.7;">
+    <strong style="color:#e2e8f0">Prerequisites (before Phase A):</strong> signed ADR with architecture decisions · senior-dev pairing scheduled · corp infra tickets open (Git repo · K8s namespace · SSO group · secret store) · naming convention + default capability list + team identifiers agreed. Architecture-questions checklist exposes ~110 items to triage — half are typically relevant.
+  </div>
+</div>
+
+<footer style="text-align:center;color:var(--muted);font-size:11px;padding:24px 0 0;">
+  Generated for Team Repository · arch-tool · single-team architecture catalog with AI documentation and Confluence sync.
+</footer>
+
+</body>
+</html>

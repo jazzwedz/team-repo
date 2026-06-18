@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/jazzwedz/arch-tool/security/advisories/new
+    about: Please report security issues privately, never as a public GitHub issue.
+  - name: Question or discussion
+    url: https://github.com/jazzwedz/arch-tool/discussions
+    about: For open-ended questions, ideas, or feedback, please start a Discussion instead of an issue.
