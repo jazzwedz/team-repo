@@ -7,6 +7,17 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.2] — 2026-06-17
+
+### Fixed
+
+- **"SVG image load failed" — the real cause: duplicate attributes.** mermaid's
+  root `<svg>` already carries `width="100%"` + `style`; prepending our own
+  `width`/`height` produced a **duplicate attribute**, making the SVG invalid
+  XML so the `<img>` refused it (Blob URL or not). Now the opening `<svg>`
+  tag is normalised — existing width/height/style stripped, clean explicit
+  dimensions + `xmlns`/`xmlns:xlink` added — so the diagram rasterises to PNG.
+
 ## [0.30.1] — 2026-06-17
 
 ### Fixed

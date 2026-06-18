@@ -40,13 +40,21 @@ async function svgToPngBase64(svg: string): Promise<string> {
       h = p[3]
     }
   }
-  // Ensure a self-contained SVG with explicit size + XML namespace, then
-  // load it via a Blob URL (more reliable than a data URL for <img>: no
-  // length/encoding pitfalls, the browser parses the SVG file directly).
-  let sized = svg.replace(/<svg\b/, `<svg width="${Math.ceil(w)}" height="${Math.ceil(h)}"`)
-  if (!/xmlns=/.test(sized)) {
-    sized = sized.replace(/<svg\b/, `<svg xmlns="http://www.w3.org/2000/svg"`)
-  }
+  // Normalise the root <svg> tag: mermaid emits its own width/height/style
+  // (often width="100%"), so blindly PREPENDING our own width/height made
+  // DUPLICATE attributes → invalid XML → the <img> refused to load. Strip
+  // the existing size/style from the opening tag and set clean explicit
+  // dimensions + the required namespaces (incl. xlink, which mermaid uses).
+  const sized = svg.replace(/<svg\b([^>]*)>/i, (_m, attrs: string) => {
+    const cleaned = attrs
+      .replace(/\swidth="[^"]*"/gi, "")
+      .replace(/\sheight="[^"]*"/gi, "")
+      .replace(/\sstyle="[^"]*"/gi, "")
+    const ns: string[] = []
+    if (!/xmlns=/.test(cleaned)) ns.push(' xmlns="http://www.w3.org/2000/svg"')
+    if (!/xmlns:xlink=/.test(cleaned)) ns.push(' xmlns:xlink="http://www.w3.org/1999/xlink"')
+    return `<svg width="${Math.ceil(w)}" height="${Math.ceil(h)}"${ns.join("")}${cleaned}>`
+  })
   const blobUrl = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }))
   try {
     const img = new Image()
