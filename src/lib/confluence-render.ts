@@ -46,7 +46,7 @@ export async function markdownToStorage(
   storage = storage.replace(
     /<p>\s*@@MERMAID_IMG_(\d+)@@\s*<\/p>|@@MERMAID_IMG_(\d+)@@/g,
     (_m, a, b) =>
-      `<ac:image><ri:attachment ri:filename="diagram-${a || b}.png"/></ac:image>`
+      `<ac:image><ri:attachment ri:filename="diagram-${a || b}.svg"/></ac:image>`
   )
   return storage
 }
@@ -71,7 +71,7 @@ function replaceMermaidBlocks(markdown: string, imageFiles?: Set<string>): strin
   let n = 0
   let out = markdown.replace(/```mermaid[\s\S]*?```\s*/gi, () => {
     n += 1
-    if (imageFiles && imageFiles.has(`diagram-${n}.png`)) {
+    if (imageFiles && imageFiles.has(`diagram-${n}.svg`)) {
       return `\n\n@@MERMAID_IMG_${n}@@\n\n`
     }
     return ""

@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, ExternalLink, AlertCircle, Check } from "lucide-react"
-import { renderDsdDiagramPngs } from "@/lib/mermaid-to-png"
+import { renderDsdDiagramImages } from "@/lib/mermaid-to-png"
 
 interface PageNode {
   id: string
@@ -137,7 +137,7 @@ export function DsdPublishDialog({
         const ar = await fetch(
           `/api/solutions/${encodeURIComponent(solutionId)}/dsd/artifacts/${encodeURIComponent(artifactId)}`
         ).then((res) => res.json()).catch(() => null)
-        if (ar?.markdown) images = await renderDsdDiagramPngs(ar.markdown)
+        if (ar?.markdown) images = await renderDsdDiagramImages(ar.markdown)
       } catch {
         /* publish text-only if diagram rendering fails */
       }

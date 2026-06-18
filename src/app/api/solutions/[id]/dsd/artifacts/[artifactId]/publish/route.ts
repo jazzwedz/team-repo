@@ -135,7 +135,10 @@ export async function POST(
       let uploaded = 0
       for (const im of images) {
         try {
-          await uploadAttachment(pageRef.id, im.filename, "image/png", Buffer.from(im.base64, "base64"))
+          const contentType = im.filename.toLowerCase().endsWith(".svg")
+            ? "image/svg+xml"
+            : "image/png"
+          await uploadAttachment(pageRef.id, im.filename, contentType, Buffer.from(im.base64, "base64"))
           uploaded += 1
         } catch (e) {
           getLogger().warn("DSD diagram attachment upload failed", {

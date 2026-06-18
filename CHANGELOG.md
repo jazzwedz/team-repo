@@ -7,6 +7,20 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-06-17
+
+### Changed
+
+- **Publish diagrams as SVG attachments, not PNG.** Rasterising the mermaid
+  SVG to PNG via a `<canvas>` hit the browser's **tainted-canvas** security
+  block (`toDataURL` → "Tainted canvases may not be exported") because
+  mermaid SVGs carry content the canvas treats as cross-origin. Switched to
+  uploading the **SVG itself** as the page attachment (`diagram-N.svg`,
+  `image/svg+xml`) — no canvas, so no taint; the diagram is still a static,
+  plugin-free image in Confluence (and vector-sharp). The publish route picks
+  the content type from the filename; everything else (client render →
+  attachment upload → `<ac:image>`, re-publish overwrite) is unchanged.
+
 ## [0.30.2] — 2026-06-17
 
 ### Fixed
