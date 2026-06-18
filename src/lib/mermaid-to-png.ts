@@ -40,29 +40,39 @@ async function svgToPngBase64(svg: string): Promise<string> {
       h = p[3]
     }
   }
-  // Give the SVG explicit pixel dimensions so the <img> rasterises at size.
-  const sized = svg.replace(/<svg\b/, `<svg width="${Math.ceil(w)}" height="${Math.ceil(h)}"`)
-  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(sized)
+  // Ensure a self-contained SVG with explicit size + XML namespace, then
+  // load it via a Blob URL (more reliable than a data URL for <img>: no
+  // length/encoding pitfalls, the browser parses the SVG file directly).
+  let sized = svg.replace(/<svg\b/, `<svg width="${Math.ceil(w)}" height="${Math.ceil(h)}"`)
+  if (!/xmlns=/.test(sized)) {
+    sized = sized.replace(/<svg\b/, `<svg xmlns="http://www.w3.org/2000/svg"`)
+  }
+  const blobUrl = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }))
+  try {
+    const img = new Image()
+    img.width = Math.ceil(w)
+    img.height = Math.ceil(h)
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error("SVG image load failed"))
+      img.src = blobUrl
+    })
 
-  const img = new Image()
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error("SVG image load failed"))
-    img.src = url
-  })
-
-  const scale = 2 // crisper output for Confluence
-  const canvas = document.createElement("canvas")
-  canvas.width = Math.max(1, Math.ceil(w * scale))
-  canvas.height = Math.max(1, Math.ceil(h * scale))
-  const ctx = canvas.getContext("2d")
-  if (!ctx) throw new Error("no 2d canvas context")
-  ctx.fillStyle = "#ffffff" // Confluence pages are light; avoid transparent bg
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.setTransform(scale, 0, 0, scale, 0, 0)
-  ctx.drawImage(img, 0, 0, w, h)
-  const dataUrl = canvas.toDataURL("image/png")
-  return dataUrl.split(",")[1] || ""
+    const scale = 2 // crisper output for Confluence
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.max(1, Math.ceil(w * scale))
+    canvas.height = Math.max(1, Math.ceil(h * scale))
+    const ctx = canvas.getContext("2d")
+    if (!ctx) throw new Error("no 2d canvas context")
+    ctx.fillStyle = "#ffffff" // Confluence pages are light; avoid transparent bg
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    ctx.drawImage(img, 0, 0, w, h)
+    const dataUrl = canvas.toDataURL("image/png")
+    return dataUrl.split(",")[1] || ""
+  } finally {
+    URL.revokeObjectURL(blobUrl)
+  }
 }
 
 export interface DiagramPng {

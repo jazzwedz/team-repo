@@ -7,6 +7,16 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-06-17
+
+### Fixed
+
+- **Diagram→PNG rendering failed with "SVG image load failed".** Loading the
+  mermaid SVG into an `<img>` via a data URL was unreliable (encoding/parse
+  pitfalls). Switched to a **Blob URL** (`URL.createObjectURL`, revoked
+  after), and ensured the SVG carries explicit width/height + an `xmlns` —
+  so the diagrams rasterise to PNG reliably for the Confluence publish.
+
 ## [0.30.0] — 2026-06-17
 
 ### Added
