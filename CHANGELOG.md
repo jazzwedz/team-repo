@@ -7,6 +7,28 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-06-17
+
+### Fixed
+
+- **All Functional Requirements now make it into the DSD (no more truncation).**
+  The functional writer produced the traceability table + every FR in one
+  LLM call capped at 2200 output tokens, so long lists were cut off (e.g.
+  only the first ~17 of 40 FRs appeared in chapter 8, even though all were
+  listed in the overview). The FR chapter is now generated in **bounded
+  chunks** of the deterministic FR seeds (8 per call) and assembled, so
+  every requirement is written regardless of count, then injected as a
+  locked chapter. The traceability table (chapter 7) still lists them all
+  from the same stable seed ids.
+
+### Added
+
+- **Each Functional Requirement now cites its source detail.** Beyond the
+  BRD/rule reference, every FR carries a **Source** line that names the
+  originating catalog rule/process and, where it derives from the attached
+  source document, quotes or summarises the specific passage that motivates
+  it — making it clear *how and why* each requirement exists.
+
 ## [0.28.6] — 2026-06-17
 
 ### Changed

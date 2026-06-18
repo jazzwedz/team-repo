@@ -317,6 +317,29 @@ async function runTeamDsd(
     if (rf) provided["runtime-flow"] = rf
   }
 
+  // Generate the Functional Requirements chapter in bounded CHUNKS and lock
+  // it: a single writer call (maxTokens 2200) was truncating long FR lists
+  // (~17 FRs out of e.g. 40). Chunking guarantees every seed is written;
+  // each FR also cites its source detail (rule/process + the BRD passage).
+  // Respect an analyst-provided FR chapter.
+  if (
+    isIncluded("functional-requirements") &&
+    !(provided["functional-requirements"] && provided["functional-requirements"].trim())
+  ) {
+    const seeds = frSeedLines(facts)
+    if (seeds.length > 0) {
+      const fwi = WRITER_GROUPS.findIndex((g) => g.agentId === "dsd-writer-functional")
+      try {
+        const fr = await generateFunctionalRequirementsChapter(facts, seeds, inst(writers[fwi >= 0 ? fwi : 0]), llm)
+        if (fr) provided["functional-requirements"] = fr
+      } catch (e) {
+        getLogger().warn("DSD chunked FR generation failed; falling back to the section writer", {
+          err: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+  }
+
   // Locked chapters (analyst-provided, used verbatim, never written/changed).
   // Only chapters that are also included count.
   const lockedIds = new Set(Object.keys(provided).filter((k) => provided[k] && provided[k].trim() && isIncluded(k)))
@@ -1092,6 +1115,68 @@ Output only the full corrected Markdown document.`
 }
 
 // ----- team-mode prompts -----
+
+// ---- Functional Requirements: chunked generation (no truncation) ----
+//
+// The FR chapter can hold dozens of requirements; producing them all in the
+// single functional-writer call (maxTokens 2200) truncated long lists. We
+// instead generate them in bounded chunks of the deterministic FR seeds and
+// concatenate — guaranteeing every seed is written — then inject the result
+// as a locked chapter. Each FR also cites its source detail.
+
+const FR_CHUNK = 8 // requirement seeds written per LLM call
+
+/** Pull the deterministic "- FR-NN ← …" seed lines out of the grounded facts. */
+function frSeedLines(facts: string): string[] {
+  return facts.split("\n").filter((l) => /^- FR-\d+\s/.test(l.trim()))
+}
+
+function frChunkPrompt(instruction: string, facts: string, seedChunk: string[]): string {
+  return `${instruction}
+
+Write the Functional Requirements for ONLY the requirement seeds listed below — EVERY one of them, in order. Do NOT write any other chapter, the chapter title, or a traceability table; output ONLY the FR entries.
+
+For EACH seed produce:
+- a sub-heading "### FR-NN — <one-line statement of what the system does>" using the seed's EXACT FR id;
+- behaviour / inputs / steps / constraints as needed;
+- the given status (Implemented / To be implemented); where the seed is flagged AS-IS, describe AS-IS (current) vs TO-BE (target);
+- for a formula/calculation rule, a short worked example as an input → output table;
+- a final "**Source:**" line — name the originating catalog rule/process from the seed AND, when the requirement relates to the attached source document (BRD), quote or closely summarise the SPECIFIC passage that motivates it, so it is clear HOW and WHY this requirement exists. Never invent; use only the verified facts.
+
+REQUIREMENT SEEDS TO WRITE (all ${seedChunk.length}):
+${seedChunk.join("\n")}
+
+VERIFIED FACTS (ground every requirement strictly in these; the BRD, if attached, is included here):
+${facts}
+
+Output only the Markdown FR entries for the seeds above.`
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generateFunctionalRequirementsChapter(
+  facts: string,
+  seeds: string[],
+  instruction: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  llm: any
+): Promise<string> {
+  if (seeds.length === 0) return ""
+  const parts: string[] = []
+  for (let i = 0; i < seeds.length; i += FR_CHUNK) {
+    const chunk = seeds.slice(i, i + FR_CHUNK)
+    const body: string = (
+      await llm.complete({ prompt: frChunkPrompt(instruction, facts, chunk), maxTokens: 4000 })
+    ).trim()
+    if (body) parts.push(body)
+  }
+  if (parts.length === 0) return ""
+  // Lead with a non-heading sentence so the locked-chapter assembler
+  // (ensureHeading) keeps the first FR's "### FR-01" heading intact.
+  return (
+    "The functional requirements below are derived from the requirement seeds and the attached source material; each cites its source.\n\n" +
+    parts.join("\n\n")
+  )
+}
 
 function sectionWriterPrompt(
   group: WriterGroup,
