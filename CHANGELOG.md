@@ -7,6 +7,18 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.1] — 2026-06-17
+
+### Changed
+
+- **Simplified the Generate DSD modal.** Removed the **Depth** and **Audience**
+  toggles — generation now always runs at **detailed** depth for a **mixed**
+  audience (the values are still applied internally, just no longer a choice).
+- **The modal now states when source code will be used.** When the source
+  repository is connected, the Generate DSD modal shows a note that the repo
+  is read (read-only) for any member mapped to it (`source.paths`) and used as
+  grounding — confirming the source-code evidence path is active.
+
 ## [0.29.0] — 2026-06-17
 
 ### Fixed

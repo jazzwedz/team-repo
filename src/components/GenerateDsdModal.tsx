@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, FileText, Paperclip, Loader2, X } from "lucide-react"
+import { Sparkles, FileText, Paperclip, Loader2, X, FileCode2 } from "lucide-react"
 import { ALL_CHAPTERS } from "@/lib/dsd-sections"
 
 export interface DsdGenerateOptions {
@@ -81,9 +81,18 @@ export function GenerateDsdModal({
   const [mode, setMode] = useState<"quick" | "team">("team")
   const [useLast, setUseLast] = useState(true)
   const [edits, setEdits] = useState<Record<string, string>>({})
-  const [depth, setDepth] = useState<"concise" | "standard" | "detailed">("standard")
-  const [audience, setAudience] = useState<"technical" | "management" | "mixed">("mixed")
+  // Depth + audience are fixed (detailed / mixed) — the toggles were removed
+  // from the UI; the values are still passed through to the generator.
   const [language, setLanguage] = useState<"en" | "sk">("en")
+  // Whether the source-code repo (SRC_ADO_*) is connected — drives the
+  // "source code will be used" note.
+  const [sourceConfigured, setSourceConfigured] = useState(false)
+  useEffect(() => {
+    fetch("/api/source-code/status")
+      .then((r) => r.json())
+      .then((d) => setSourceConfigured(!!d.configured))
+      .catch(() => setSourceConfigured(false))
+  }, [])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [showProvide, setShowProvide] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -217,7 +226,7 @@ export function GenerateDsdModal({
       if (v) provided[c.id] = v
     }
     const includeChapters = ALL_CHAPTERS.filter((c) => !excluded.has(c.id)).map((c) => c.id)
-    onGenerate({ mode, provided, depth, audience, language, includeChapters })
+    onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters })
   }
 
   return (
@@ -250,33 +259,23 @@ export function GenerateDsdModal({
 
           {mode === "team" && (
             <>
-              {/* depth + audience */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="text-sm font-medium mb-1">Depth</div>
-                  <Seg
-                    value={depth}
-                    onChange={setDepth}
-                    options={[
-                      { v: "concise", label: "Concise" },
-                      { v: "standard", label: "Standard" },
-                      { v: "detailed", label: "Detailed" },
-                    ]}
-                  />
+              {/* Source-code grounding note — shown only when the source repo
+                  is connected. DSD generation reads the files mapped on each
+                  member (source.paths) as authoritative grounding. */}
+              {sourceConfigured && (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm flex items-start gap-2">
+                  <FileCode2 className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
+                  <span>
+                    <span className="font-medium">Source code will be used.</span>{" "}
+                    <span className="text-muted-foreground">
+                      The connected repository is read (read-only) for any member
+                      mapped to it (<code>source.paths</code>) and used as
+                      grounding for the requirements, data structures and
+                      interactions.
+                    </span>
+                  </span>
                 </div>
-                <div>
-                  <div className="text-sm font-medium mb-1">Audience</div>
-                  <Seg
-                    value={audience}
-                    onChange={setAudience}
-                    options={[
-                      { v: "technical", label: "Technical" },
-                      { v: "management", label: "Management" },
-                      { v: "mixed", label: "Mixed" },
-                    ]}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* reuse locked */}
               {hasPreviousLocked && (
