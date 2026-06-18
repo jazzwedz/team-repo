@@ -51,6 +51,15 @@ export function deletePage(pageId: string): Promise<void> {
   return getConfluenceProvider().deletePage(pageId)
 }
 
+export function uploadAttachment(
+  pageId: string,
+  filename: string,
+  contentType: string,
+  data: Uint8Array
+): Promise<void> {
+  return getConfluenceProvider().uploadAttachment(pageId, filename, contentType, data)
+}
+
 export function findPageByTitleInSpace(
   title: string
 ): Promise<ConfluencePageRef | null> {

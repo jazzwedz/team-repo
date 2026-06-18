@@ -1,6 +1,6 @@
 {
   "name": "arch-tool",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "private": true,
   "description": "Team Repository — AI-powered architecture catalog for a single team. Components, capabilities, data flows, business rules and bidirectional Confluence sync, kept as YAML in a Git repo.",
   "license": "MIT",

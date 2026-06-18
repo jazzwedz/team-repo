@@ -21,8 +21,18 @@ const ARCH_TOOL_PUBLIC_URL =
 // raw text — ugly and useless to readers. We strip them before conversion
 // and replace the AI's manual table-of-contents with the native Confluence
 // TOC macro, which auto-builds a clickable navigator from headings.
-export async function markdownToStorage(markdown: string): Promise<string> {
-  const cleaned = stripMermaidBlocks(markdown)
+export async function markdownToStorage(
+  markdown: string,
+  opts: {
+    // When given, mermaid blocks are replaced (in document order) by an
+    // <ac:image> referencing diagram-N.png IF that filename is in the set
+    // (a pre-rendered PNG attached to the page); otherwise the block is
+    // stripped as before. Without this option every mermaid block is
+    // stripped (Confluence can't render the source).
+    mermaidImageFiles?: Set<string>
+  } = {}
+): Promise<string> {
+  const cleaned = replaceMermaidBlocks(markdown, opts.mermaidImageFiles)
   const html = await marked.parse(cleaned, { async: true, gfm: true, breaks: false })
   // Confluence storage format is strict XHTML — self-close void tags BEFORE
   // code blocks become CDATA (where literal <br> in a code sample must be
@@ -31,6 +41,13 @@ export async function markdownToStorage(markdown: string): Promise<string> {
   storage = processCodeBlocks(storage)
   storage = replaceTableOfContents(storage)
   storage = polishParagraphs(storage)
+  // Swap the diagram tokens for Confluence image macros referencing the
+  // attached PNGs (added after marked so the XHTML isn't escaped).
+  storage = storage.replace(
+    /<p>\s*@@MERMAID_IMG_(\d+)@@\s*<\/p>|@@MERMAID_IMG_(\d+)@@/g,
+    (_m, a, b) =>
+      `<ac:image><ri:attachment ri:filename="diagram-${a || b}.png"/></ac:image>`
+  )
   return storage
 }
 
@@ -44,12 +61,21 @@ function selfCloseVoidTags(html: string): string {
     .replace(/<img\b([^>]*?)\s*\/?>/gi, (_m, attrs) => `<img${attrs}/>`)
 }
 
-// Remove ```mermaid ... ``` fenced blocks AND any "leftover" empty paragraph
-// nudges that surrounded them in the AI output (e.g., "Example format:").
-function stripMermaidBlocks(markdown: string): string {
-  let out = markdown
-  // Strip the fenced mermaid blocks themselves.
-  out = out.replace(/```mermaid[\s\S]*?```\s*/gi, "")
+// Handle ```mermaid ... ``` fenced blocks. Without `imageFiles` every block
+// is removed (Confluence can't render the source). With `imageFiles`, the
+// Nth block (1-based, document order — the SAME order the client renders
+// PNGs in) becomes a `@@MERMAID_IMG_N@@` token when diagram-N.png is
+// available, else it is stripped. Tokens are turned into <ac:image> macros
+// after markdown→HTML so the XHTML survives.
+function replaceMermaidBlocks(markdown: string, imageFiles?: Set<string>): string {
+  let n = 0
+  let out = markdown.replace(/```mermaid[\s\S]*?```\s*/gi, () => {
+    n += 1
+    if (imageFiles && imageFiles.has(`diagram-${n}.png`)) {
+      return `\n\n@@MERMAID_IMG_${n}@@\n\n`
+    }
+    return ""
+  })
   // Strip prompt-leak phrases that sometimes appear when AI parrots the
   // instruction template. Keep this surgical to avoid eating real prose.
   out = out.replace(/^\s*Example format:\s*$/gim, "")

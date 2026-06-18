@@ -71,6 +71,16 @@ export interface ConfluenceProvider {
 
   deletePage(pageId: string): Promise<void>
 
+  // Create or update (by filename) a binary attachment on a page. Used to
+  // publish rendered diagram images so they show without a Confluence
+  // plugin. Re-publish overwrites the same filename (new attachment version).
+  uploadAttachment(
+    pageId: string,
+    filename: string,
+    contentType: string,
+    data: Uint8Array
+  ): Promise<void>
+
   findPageByTitleInSpace(title: string): Promise<ConfluencePageRef | null>
   findPageByComponentId(componentId: string): Promise<ConfluencePageRef | null>
 

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, ExternalLink, AlertCircle, Check } from "lucide-react"
+import { renderDsdDiagramPngs } from "@/lib/mermaid-to-png"
 
 interface PageNode {
   id: string
@@ -98,6 +99,7 @@ export function DsdPublishDialog({
   const [parentId, setParentId] = useState<string>(currentParentId || "")
   const [error, setError] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [statusMsg, setStatusMsg] = useState<string | null>(null)
   const [resultUrl, setResultUrl] = useState<string | null>(currentPageUrl || null)
 
   useEffect(() => {
@@ -126,13 +128,27 @@ export function DsdPublishDialog({
     setPublishing(true)
     setError(null)
     try {
+      // Render the DSD's mermaid diagrams to PNG in the browser, so they can
+      // be attached to the Confluence page (no mermaid plugin needed there).
+      // Best-effort: if it fails, publish the text without the diagrams.
+      let images: { filename: string; base64: string }[] = []
+      try {
+        setStatusMsg("Rendering diagrams…")
+        const ar = await fetch(
+          `/api/solutions/${encodeURIComponent(solutionId)}/dsd/artifacts/${encodeURIComponent(artifactId)}`
+        ).then((res) => res.json()).catch(() => null)
+        if (ar?.markdown) images = await renderDsdDiagramPngs(ar.markdown)
+      } catch {
+        /* publish text-only if diagram rendering fails */
+      }
+      setStatusMsg("Publishing…")
       const parentTitle = pages.find((p) => p.id === parentId)?.title
       const r = await fetch(
         `/api/solutions/${encodeURIComponent(solutionId)}/dsd/artifacts/${encodeURIComponent(artifactId)}/publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ parentId, parentTitle }),
+          body: JSON.stringify({ parentId, parentTitle, images }),
         }
       )
       const d = await r.json().catch(() => null)
@@ -152,6 +168,7 @@ export function DsdPublishDialog({
       setError(e instanceof Error ? e.message : "Publish failed")
     } finally {
       setPublishing(false)
+      setStatusMsg(null)
     }
   }
 
@@ -239,7 +256,7 @@ export function DsdPublishDialog({
                 {publishing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Publishing…
+                    {statusMsg || "Publishing…"}
                   </>
                 ) : (
                   "Publish"

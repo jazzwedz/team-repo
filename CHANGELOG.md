@@ -7,6 +7,27 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-06-17
+
+### Added
+
+- **Diagrams now make it into the published Confluence page (plugin-free).**
+  Previously mermaid blocks were stripped on publish (Confluence can't render
+  the source, and there's no mermaid plugin), so the DSD lost its
+  architecture and process diagrams. Now, on **Publish**, the browser
+  renders each mermaid diagram to a **PNG** (reusing the viewer's mermaid;
+  `htmlLabels` off so the SVG rasterises cleanly), the publish route uploads
+  them as **page attachments**, and the storage references them as
+  `<ac:image>` — so the diagrams show as static images on any Confluence
+  Data Center, no plugin or HTML macro required.
+  - **Re-publish** overwrites the same attachment filenames (new version),
+    matching the existing update-in-place behaviour.
+  - **Best-effort & resilient:** diagrams are numbered to match the document
+    order; a diagram that fails to render is simply omitted (its block is
+    dropped) and the text still publishes. No new dependencies.
+  New `uploadAttachment` on both Confluence providers, `src/lib/mermaid-to-png.ts`,
+  and a mermaid-image mode in `markdownToStorage`.
+
 ## [0.29.1] — 2026-06-17
 
 ### Changed

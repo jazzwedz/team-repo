@@ -104,6 +104,52 @@ export class ConfluenceCloudProvider implements ConfluenceProvider {
     )
   }
 
+  // Create or update an attachment by filename. Attachments still use the
+  // v1 REST API on Cloud (v2 has no attachment-create). Multipart upload
+  // with the XSRF-bypass header; existing filename → POST to its /data.
+  async uploadAttachment(
+    pageId: string,
+    filename: string,
+    contentType: string,
+    data: Uint8Array
+  ): Promise<void> {
+    const existingId = await this.findAttachmentId(pageId, filename)
+    const path = existingId
+      ? `/wiki/rest/api/content/${encodeURIComponent(pageId)}/child/attachment/${encodeURIComponent(existingId)}/data`
+      : `/wiki/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`
+    const form = new FormData()
+    form.append("file", new Blob([data as BlobPart], { type: contentType }), filename)
+    form.append("minorEdit", "true")
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: this.authHeader,
+        "X-Atlassian-Token": "nocheck",
+        Accept: "application/json",
+      },
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      throw new ConfluenceHttpError(
+        res.status,
+        `Confluence attachment upload ${filename} → ${res.status}: ${body.slice(0, 300)}`
+      )
+    }
+  }
+
+  private async findAttachmentId(pageId: string, filename: string): Promise<string | null> {
+    const params = new URLSearchParams({ filename, limit: "1" })
+    try {
+      const data = await this.request<{ results?: Array<{ id: string }> }>(
+        `/wiki/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?${params.toString()}`
+      )
+      return data.results?.[0]?.id || null
+    } catch {
+      return null
+    }
+  }
+
   async findPageByTitleInSpace(
     title: string
   ): Promise<ConfluencePageRef | null> {

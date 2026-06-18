@@ -17,15 +17,27 @@ import {
   updatePage,
   getPage,
   findPageByTitleInSpace,
+  uploadAttachment,
   escapeXml,
 } from "@/lib/confluence"
 import { markdownToStorage } from "@/lib/confluence-render"
 
 export const dynamic = "force-dynamic"
+export const maxDuration = 120
+
+interface PublishImage {
+  /** diagram-N.png, matching the document order of the mermaid blocks. */
+  filename: string
+  /** base64-encoded PNG bytes (no data: prefix). */
+  base64: string
+}
 
 interface PublishBody {
   parentId: string
   parentTitle?: string
+  /** Pre-rendered diagram PNGs (rendered client-side); attached to the page
+   *  and referenced from the storage as <ac:image>. */
+  images?: PublishImage[]
 }
 
 export async function POST(
@@ -75,7 +87,9 @@ export async function POST(
     }
 
     try {
-      const storageBody = await buildDsdPageBody(artifact)
+      const images = Array.isArray(body.images) ? body.images : []
+      const imageFiles = new Set(images.map((im) => im.filename))
+      const storageBody = await buildDsdPageBody(artifact, imageFiles)
       const existingPageId = artifact.confluence?.pageId
 
       let pageRef
@@ -113,6 +127,27 @@ export async function POST(
           parentId,
         })
         action = "created"
+      }
+
+      // Upload the rendered diagram PNGs as page attachments so the
+      // <ac:image> refs resolve (best-effort: a failed image must not fail
+      // the whole publish — the page text is already there).
+      let uploaded = 0
+      for (const im of images) {
+        try {
+          await uploadAttachment(pageRef.id, im.filename, "image/png", Buffer.from(im.base64, "base64"))
+          uploaded += 1
+        } catch (e) {
+          getLogger().warn("DSD diagram attachment upload failed", {
+            id,
+            artifactId,
+            filename: im.filename,
+            err: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }
+      if (images.length) {
+        getLogger().info("DSD diagrams attached", { id, artifactId, uploaded, total: images.length })
       }
 
       await setDsdConfluence(id, artifactId, {
@@ -166,7 +201,7 @@ async function uniqueTitle(base: string, artifactId: string): Promise<string> {
   return `${title} (${short})`
 }
 
-async function buildDsdPageBody(artifact: DsdArtifact): Promise<string> {
+async function buildDsdPageBody(artifact: DsdArtifact, mermaidImageFiles?: Set<string>): Promise<string> {
   // Make clear this is analyst-authored work via Team Repository (a person
   // in the loop using AI assistance), not an autonomous bot output. No
   // link back to the tool: it runs locally inside the corp network, so a
@@ -178,7 +213,7 @@ async function buildDsdPageBody(artifact: DsdArtifact): Promise<string> {
     buildCredit(artifact) +
     `</ac:rich-text-body>` +
     `</ac:structured-macro>`
-  const narrative = await markdownToStorage(artifact.markdown)
+  const narrative = await markdownToStorage(artifact.markdown, { mermaidImageFiles })
   const footer = `<hr/><p style="color:#9ca3af;font-size:11px;">Team Repository · DSD ${escapeXml(artifact.solutionId)}</p>`
   return [header, narrative, footer].join("\n")
 }
