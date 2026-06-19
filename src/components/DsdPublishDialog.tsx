@@ -100,6 +100,7 @@ export function DsdPublishDialog({
   const [error, setError] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [diag, setDiag] = useState<string | null>(null)
   const [resultUrl, setResultUrl] = useState<string | null>(currentPageUrl || null)
 
   useEffect(() => {
@@ -157,6 +158,9 @@ export function DsdPublishDialog({
         return
       }
       setResultUrl(d.pageUrl)
+      if (typeof d.imagesTotal === "number") {
+        setDiag(`${d.imagesUploaded}/${d.imagesTotal} diagram(s) attached`)
+      }
       onPublished?.({
         pageId: d.pageId,
         pageUrl: d.pageUrl,
@@ -238,6 +242,7 @@ export function DsdPublishDialog({
                   {resultUrl}
                   <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                 </a>
+                {diag && <div className="mt-1 text-xs text-green-800">{diag}</div>}
               </div>
             )}
 

@@ -169,6 +169,8 @@ export async function POST(
         pageUrl: pageRef.fullUrl,
         parentId,
         parentTitle: body.parentTitle,
+        imagesUploaded: uploaded,
+        imagesTotal: images.length,
       })
     } catch (error: unknown) {
       const status =

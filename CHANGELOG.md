@@ -7,6 +7,16 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.1] — 2026-06-17
+
+### Added
+
+- **Publish reports how many diagrams it attached.** The publish response now
+  carries `imagesUploaded` / `imagesTotal` and the dialog shows "N/M
+  diagram(s) attached" — so when diagrams don't appear in Confluence you can
+  immediately tell whether they were rendered + uploaded (a Confluence-side
+  rendering issue) or never sent (a client render issue).
+
 ## [0.31.0] — 2026-06-17
 
 ### Changed
