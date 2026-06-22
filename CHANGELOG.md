@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.0] — 2026-06-22
+
+### Changed
+
+- **The component edit form is now split into tabs**, mirroring the
+  component view page's tabs for consistency — **Overview** (basics,
+  description, data-model link, risks), **Properties** (source mapping,
+  links, capabilities, NFR) and **Rules & Calculations** — so a field lives
+  under the same tab whether you are viewing or editing it. Tabs only appear
+  on the full New/Edit form; the focused single-section dialog
+  (BlockEditDialog) is unchanged. Tabs whose blocks are all hidden by UI
+  config are dropped, same as the view.
+
 ## [0.36.1] — 2026-06-22
 
 ### Changed

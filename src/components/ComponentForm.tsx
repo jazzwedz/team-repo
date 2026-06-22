@@ -187,6 +187,9 @@ export function ComponentForm({
   const showCapabilities =
     visible("capabilities") && isBlockVisible(uiBlocks, "business", "capabilities")
   const showRules = visible("rules") && isBlockVisible(uiBlocks, "rules", "section")
+  const tabbed = focusBlock === undefined
+  const [formTab, setFormTab] = useState<"overview" | "properties" | "rules">("overview")
+
   // Fresh catalog snapshot, fetched once per form mount. Used by both
   // the relationship Target Component picker and the interface target
   // typeahead — passed down as a prop so a single fetch feeds every
@@ -217,6 +220,20 @@ export function ComponentForm({
     schema_version: 2,
     ...(initialData || {}),
   })
+
+  // Tabs — only on the full New/Edit form (focusBlock undefined). They
+  // mirror the component VIEW page's tabs (Overview / Properties / Rules &
+  // Calculations) so a field lives under the same tab whether you are
+  // viewing or editing it. In focus mode (BlockEditDialog) there are no
+  // tabs: just the one card, so `onTab` returns true whenever tabs are not
+  // in play — preserving the single-block behaviour.
+  const formTabs = [
+    { id: "overview" as const, label: "Overview", has: showBasicInfo || showDescription || showRisks || form.type === "table" },
+    { id: "properties" as const, label: "Properties", has: showBasicInfo || showLinks || showCapabilities || showNfr },
+    { id: "rules" as const, label: "Rules & Calculations", has: showRules },
+  ].filter((t) => t.has)
+  const activeTab = formTabs.some((t) => t.id === formTab) ? formTab : (formTabs[0]?.id ?? "overview")
+  const onTab = (t: "overview" | "properties" | "rules"): boolean => !tabbed || activeTab === t
 
   const [tagsInput, setTagsInput] = useState(
     initialData?.tags?.join(", ") || ""
@@ -567,9 +584,34 @@ export function ComponentForm({
         outer LockBanner already explains why saves are blocked.
       */}
       <fieldset disabled={readOnly} className="space-y-6 contents">
+      {/* Tab nav — mirrors the component view's tabs for consistency.
+          Only shown on the full form; the focused single-block dialog has
+          no tabs. */}
+      {tabbed && formTabs.length > 1 && (
+        <div className="border-b">
+          <nav className="-mb-px flex gap-1 flex-wrap" role="tablist">
+            {formTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === t.id}
+                onClick={() => setFormTab(t.id)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === t.id
+                    ? "border-blue-600 text-blue-700"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      )}
       {/* Basic Info — hidden in focus mode (BlockEditDialog) since
           identity-level fields are edited only via the full Edit page. */}
-      {showBasicInfo && (
+      {showBasicInfo && onTab("overview") && (
       <Card>
         <CardHeader>
           <CardTitle>Basic Information</CardTitle>
@@ -708,7 +750,7 @@ export function ComponentForm({
           technical + business sections (and / or oneliner) is merged
           into this on load via migrateComponent; the next save persists
           only the unified field and drops the legacy ones. */}
-      {showDescription && (
+      {showDescription && onTab("overview") && (
       <Card>
         <CardHeader>
           <CardTitle>Description</CardTitle>
@@ -745,7 +787,7 @@ export function ComponentForm({
           components. The card itself silently hides when the
           deployment does not have the registry configured, so an
           OSS install without the integration sees nothing. */}
-      {form.type === "table" && (
+      {form.type === "table" && onTab("overview") && (
         <DataModelLinkCard
           entity={form.data_model?.entity}
           onChange={(entity) =>
@@ -757,7 +799,7 @@ export function ComponentForm({
       {/* Source code mapping — self-hides when the source-code connection
           is not configured (SRC_ADO_*). Feeds DSD generation grounding.
           Shown only on the full New/Edit page, not the per-block dialog. */}
-      {showBasicInfo && (
+      {showBasicInfo && onTab("properties") && (
         <SourceCodeCard
           source={form.source}
           onChange={(s) => updateField("source", s)}
@@ -770,7 +812,7 @@ export function ComponentForm({
           contains / reads-from / writes-to), optionally pick a
           protocol (rest / grpc / async / db / file / human / info /
           link / data), give it a short name and a description. */}
-      {showLinks && (
+      {showLinks && onTab("properties") && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -976,7 +1018,7 @@ export function ComponentForm({
       )}
 
       {/* Capabilities */}
-      {showCapabilities && (
+      {showCapabilities && onTab("properties") && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1083,7 +1125,7 @@ export function ComponentForm({
 
 
       {/* Rules & Calculations */}
-      {showRules && (
+      {showRules && onTab("rules") && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1249,7 +1291,7 @@ export function ComponentForm({
       )}
 
       {/* Non-Functional Requirements */}
-      {showNfr && (
+      {showNfr && onTab("properties") && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1360,7 +1402,7 @@ export function ComponentForm({
       )}
 
       {/* Risks */}
-      {showRisks && (
+      {showRisks && onTab("overview") && (
       <Card>
         <CardHeader>
           <CardTitle>Risks</CardTitle>
