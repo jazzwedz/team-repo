@@ -7,6 +7,20 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.1] — 2026-06-22
+
+### Fixed
+
+- **Confluence publish failed with "Error parsing xhtml: Undeclared general
+  entity".** Confluence storage XHTML only allows the five XML built-in
+  entities (`&amp; &lt; &gt; &quot; &apos;`) plus numeric refs, but `marked`
+  preserves anything shaped like an entity (`&word;`) — so AI prose where an
+  "&" is followed by letters and a ";" reached Confluence as an undeclared
+  entity and rejected the whole page. The renderer now escapes every "&"
+  that doesn't begin a valid XML entity, as a final pass that leaves CDATA
+  code blocks untouched. Together with the stray-`<` guard (v0.32.1), the
+  narrative is now hardened against both classes of XHTML-parse rejection.
+
 ## [0.35.0] — 2026-06-22
 
 ### Added

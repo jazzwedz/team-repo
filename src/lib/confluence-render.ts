@@ -54,7 +54,31 @@ export async function markdownToStorage(
     (_m, a, b) =>
       `<ac:image><ri:attachment ri:filename="diagram-${a || b}.svg"/></ac:image>`
   )
+  // Final guard: escape any '&' that doesn't begin a valid XML entity. Must
+  // run last, after code blocks are CDATA (where '&' is literal and is left
+  // untouched), so the whole storage body is well-formed XHTML.
+  storage = escapeStrayEntities(storage)
   return storage
+}
+
+// Confluence storage is strict XHTML: the only valid named entities are the
+// five XML built-ins (amp, lt, gt, quot, apos); any other "&word;" (e.g.
+// &nbsp;, &copy;, or an ampersand+word the author never meant as an entity)
+// is an "undeclared general entity" and rejects the whole page. marked
+// deliberately preserves anything shaped like an entity, so prose where an
+// "&" is followed by letters and a ";" slips through verbatim. Escape every
+// "&" that does not begin a valid XML entity (named built-in or numeric
+// ref), leaving CDATA sections — where "&" is literal code — untouched.
+function escapeStrayEntities(storage: string): string {
+  // Split keeps the CDATA delimiters as odd-indexed parts (skipped).
+  return storage
+    .split(/(<!\[CDATA\[[\s\S]*?\]\]>)/)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
+    )
+    .join("")
 }
 
 // HTML element names marked legitimately emits. Anything else that looks
