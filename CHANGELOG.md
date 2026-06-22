@@ -7,6 +7,15 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.2] — 2026-06-17
+
+### Changed
+
+- **Rule "Detailed description" field is taller and resizable.** On a
+  component's Rules & Calculations editor, the detailed-description textarea
+  now defaults to ~2× the height and can be dragged taller (vertical resize),
+  so longer calculation notes are easier to write.
+
 ## [0.31.1] — 2026-06-17
 
 ### Added

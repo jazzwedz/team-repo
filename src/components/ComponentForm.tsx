@@ -1226,7 +1226,8 @@ export function ComponentForm({
                   placeholder="Detailed description (optional)"
                   value={r.description || ""}
                   onChange={(e) => updateRule(i, "description", e.target.value)}
-                  rows={2}
+                  rows={4}
+                  className="min-h-[160px] resize-y"
                 />
               </div>
             ))
