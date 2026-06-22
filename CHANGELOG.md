@@ -7,6 +7,27 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.0] — 2026-06-22
+
+### Changed
+
+- **Better AI process drafts — steps attach to the component that carries
+  them.** The process-drafter used to collapse a whole process onto one
+  lifeline, rendering substantive steps as notes even when the solution's
+  wiring clearly named the component each step belongs to. The drafter now:
+  - receives **richer member context** (type, disposition + role in the
+    solution, top capabilities) via a shared, reusable payload builder
+    (`src/lib/process-draft-payload.ts`), used by both the composer and the
+    solution editor;
+  - treats the solution's **flows as the backbone** of the sequence (not
+    just "context"), so a step that reads/produces/stores/receives is
+    addressed to the linked member as a message, with a `return` reply where
+    a result flows back;
+  - uses a note (`to: null`) **only** for a genuinely internal action.
+  - It still grounds every step in the description/document and never invents
+    interactions just to make every member participate. No vendor-specific
+    text is baked into the prompt — only catalog-derived runtime values.
+
 ## [0.33.0] — 2026-06-22
 
 ### Added

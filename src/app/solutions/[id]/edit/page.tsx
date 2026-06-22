@@ -18,6 +18,7 @@ import { ChipPicker } from "@/components/ChipPicker"
 import { MermaidPreview } from "@/components/mermaid-preview"
 import { ProcessesEditor } from "@/components/ProcessesEditor"
 import { buildSolutionMermaid } from "@/lib/architecture-mermaid"
+import { buildProcessDraftMembers } from "@/lib/process-draft-payload"
 import { slugifyId } from "@/lib/component-schema"
 import {
   BUSINESS_CAPABILITIES,
@@ -420,7 +421,10 @@ export default function EditSolutionPage() {
                 name,
                 goal,
                 description: desc,
-                members: members.map((m) => ({ id: m.component, name: label(m.component) })),
+                members: buildProcessDraftMembers(
+                  members,
+                  (id) => byId.get(id) || pendingNew[id]
+                ),
                 flows: flows.map((f) => ({ from: f.from, to: f.to, role: f.role, protocol: f.protocol })),
               }),
             })

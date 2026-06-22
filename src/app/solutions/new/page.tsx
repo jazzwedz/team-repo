@@ -30,6 +30,7 @@ import { ProcessesEditor } from "@/components/ProcessesEditor"
 import { AgentRunModal } from "@/components/AgentRunModal"
 import { buildSolutionMermaid } from "@/lib/architecture-mermaid"
 import { buildSolutionSequenceMermaid } from "@/lib/solution-sequence"
+import { buildProcessDraftMembers } from "@/lib/process-draft-payload"
 import { proposeSolution, type SolutionProposal } from "@/lib/solution-proposer"
 import { slugifyId } from "@/lib/component-schema"
 import {
@@ -911,10 +912,10 @@ export default function NewSolutionPage() {
                   name,
                   goal,
                   description: desc,
-                  members: assembled.members.map((m) => ({
-                    id: m.component,
-                    name: labelFor(m.component, byId, assembled.newComponents),
-                  })),
+                  members: buildProcessDraftMembers(
+                    assembled.members,
+                    (id) => byId.get(id) || assembled.newComponents.find((n) => n.id === id)
+                  ),
                   flows: assembled.flows.map((f) => ({ from: f.from, to: f.to, role: f.role, protocol: f.protocol })),
                   sourceDoc: sourceDoc?.text || undefined,
                 }),

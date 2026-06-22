@@ -21,12 +21,21 @@ import type { ProcessActor, SolutionProcessStep, ProcessStepKind, ProcessRole } 
 
 export const dynamic = "force-dynamic"
 
+interface DraftMember {
+  id: string
+  name: string
+  type?: string
+  disposition?: string
+  role?: string
+  capabilities?: string[]
+}
+
 interface Body {
   processName?: string
   name?: string
   goal?: string
   description?: string
-  members?: { id: string; name: string }[]
+  members?: DraftMember[]
   flows?: { from: string; to: string; role?: string; protocol?: string }[]
   sourceDoc?: string
 }
@@ -133,8 +142,20 @@ function parseJsonObject(text: string): Record<string, any> {
   return JSON.parse(bodyText.slice(start, end + 1))
 }
 
-function buildPrompt(lead: string, body: Body, members: { id: string; name: string }[]): string {
-  const memberLines = members.map((m) => `- ${m.id} (${m.name})`).join("\n")
+function buildPrompt(lead: string, body: Body, members: DraftMember[]): string {
+  const memberLines = members
+    .map((m) => {
+      const facts = [
+        m.type,
+        m.disposition ? `${m.disposition} in solution` : "",
+        m.role ? `role: ${m.role}` : "",
+        m.capabilities && m.capabilities.length
+          ? `capabilities: ${m.capabilities.join(", ")}`
+          : "",
+      ].filter(Boolean)
+      return `- ${m.id} — ${m.name}${facts.length ? ` · ${facts.join(" · ")}` : ""}`
+    })
+    .join("\n")
   const flowLines = (body.flows || [])
     .map((f) => `- ${f.from} → ${f.to}${f.role ? ` (${f.role}${f.protocol ? `/${f.protocol}` : ""})` : ""}`)
     .join("\n")
@@ -144,23 +165,25 @@ function buildPrompt(lead: string, body: Body, members: { id: string; name: stri
 
 Draft ONE ordered process sequence for the solution below, as actor→target steps that can render as a sequence diagram.
 
+The members and their wiring tell you WHO carries each step. Route the process along that wiring: when a step describes work that a member performs, reads, produces, stores or receives, address the step TO that member as a message between participants — do NOT collapse the process into notes on a single lifeline.
+
 Solution:
 - Name: ${sanitizeForPrompt(body.name || "(none)")}
 - Goal: ${sanitizeForPrompt(body.goal || "(none)")}
 - Process to model: ${sanitizeForPrompt(body.processName || "(main process)")}
 - Description: ${sanitizeForPrompt(body.description || "(none)")}
 
-Members (participants you may use — reference by exact id):
+Members (participants — reference by exact id; the facts after each id tell you what that member is responsible for):
 ${memberLines || "(none)"}
 
-Existing technical flows (context only):
+Wiring — how the members connect. This is the BACKBONE of the process: each substantive step should travel along one of these edges, to the member at the other end.
 ${flowLines || "(none)"}
 ${doc ? `\nSource requirement document (context):\n${doc}\n` : ""}
 Return ONLY a JSON object, no prose, no code fence, with this shape:
 {
   "actors": [
     { "id": "<member id>", "kind": "member", "component": "<member id>", "role": "owner|participant|trigger|listener" },
-    { "id": "ext:user", "kind": "external", "label": "Customer", "role": "trigger" }
+    { "id": "ext:user", "kind": "external", "label": "<role of the person/system>", "role": "trigger" }
   ],
   "steps": [
     { "from": "<actor id>", "to": "<actor id or null>", "label": "what happens", "description": "optional detail", "kind": "sync|async|note|return" }
@@ -168,11 +191,12 @@ Return ONLY a JSON object, no prose, no code fence, with this shape:
 }
 
 Rules:
-- Member actors MUST use an exact member id from the list above (id === component).
+- Member actors MUST use an exact member id from the list above (id === component). Declare an actor for EVERY member that takes part in at least one step — and only those (no idle participants).
+- Map each step to the member that carries it. PREFER a message between two participants over a note. Use "to": null (a note) ONLY for a genuinely internal action inside one member that involves no other participant — e.g. an in-memory computation or aggregation.
+- Lean on the wiring above: if a step's work matches an edge to a linked member, send the message to that member, and add a "return" reply when it produces a result back.
 - Give each actor a "role": owner / participant / trigger / listener.
-- Add external actors (kind "external", id prefixed "ext:") for people/roles/systems not in the members — processes often start with a user.
+- Add external actors (kind "external", id prefixed "ext:") for people/roles/systems outside the members — processes often start with a user or scheduled trigger.
 - Steps are ORDERED. Each from/to must be an actor id you declared.
-- Use "to": null for an internal action (rendered as a note).
-- kind: "sync" for a call, "async" for fire-and-forget, "return" for a reply, "note" for an internal/aside.
-- Keep it focused and grounded — only what the description/document implies. Output valid JSON only.`
+- kind: "sync" for a call, "async" for fire-and-forget, "return" for a reply, "note" for an internal aside.
+- Ground every step in the description/document — do NOT invent steps or interactions just to make every member participate, and it is fine to leave a member unused if nothing in the process touches it. Output valid JSON only.`
 }
