@@ -7,6 +7,29 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-06-22
+
+### Changed
+
+- **Rules import now extracts far more, at finer granularity.** A ~30-row
+  table used to yield only ~5 rules. Three fixes:
+  - **Decision-table awareness** — the extractor is now told that a header
+    row + many data rows is a lookup/parameter/decision table where *each
+    row encodes its own rule* (condition columns → result column), and to
+    split if/else branches, switch cases, threshold bands and named
+    parameters instead of merging them.
+  - **Loop-until-dry extraction** — Pass 2 now runs up to 5 rounds: round 1
+    extracts what it can, each later round is a completeness sweep fed the
+    names already found ("what did you miss?"), stopping when a round adds
+    nothing new (or the 250-candidate cap is hit). One call abstracts and
+    stops; the sweeps force out the long tail. Per-round token budget raised
+    to 8192. Candidates are de-duped on name + formula/given/when/then, so
+    distinct decision-table rows that share a name are kept.
+  - **xlsx framing fixed** — the spreadsheet extractor previously labelled
+    table rows as "worked examples", which actively told the model to ignore
+    them; it now frames each row as a candidate rule.
+  - Still strictly grounded — only what the source states; no invented rules.
+
 ## [0.35.1] — 2026-06-22
 
 ### Fixed

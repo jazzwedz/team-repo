@@ -14,12 +14,19 @@ import type {
   RuleCandidateKind,
 } from "./types"
 
-const PASS_2_MAX_TOKENS = 4096
+const PASS_2_MAX_TOKENS = 8192
 // Cap on the concatenated passages we feed to Pass 2. Large enough for
 // a generous set of relevant sections, small enough that Pass 2 stays
 // under Anthropic's 200K context with the system instructions plus the
 // component context plus existing rules.
 const PASS_2_INPUT_CAP = 80_000
+// Extraction runs in rounds: round 1 extracts what it can, each later
+// round is a completeness sweep ("what did you miss?") fed the names
+// already found, until a round adds nothing new or the caps are hit.
+// This is what turns a 30-row table into ~30 rules instead of ~5 — one
+// call abstracts and stops; the sweeps force it to enumerate the tail.
+const MAX_ROUNDS = 5
+const MAX_CANDIDATES = 250
 
 function summariseExistingRules(rules: ComponentRule[] | undefined): string {
   if (!rules || rules.length === 0) return "(none)"
@@ -40,12 +47,19 @@ function buildComponentContextShort(c: Component): string {
 
 export type ExtractSourceKind = "doc" | "code"
 
+function summariseAlreadyFound(found: RuleCandidate[]): string {
+  return found
+    .map((c, i) => `  [${i}] (${c.kind}) ${c.name}${c.summary ? ` — ${c.summary}` : ""}`)
+    .join("\n")
+}
+
 function buildPrompt(
   lead: string,
   component: Component,
   sections: RelevantSection[],
   sourceKind: ExtractSourceKind = "doc",
-  language?: string
+  language?: string,
+  alreadyFound: RuleCandidate[] = []
 ): string {
   const sectionsText = sections
     .map(
@@ -68,9 +82,18 @@ function buildPrompt(
 `
       : ""
 
+  const sweep =
+    alreadyFound.length > 0
+      ? `\nYOU HAVE ALREADY EXTRACTED these rules in an earlier pass — do NOT repeat any of them:
+${summariseAlreadyFound(alreadyFound)}
+
+This is a COMPLETENESS SWEEP. Re-read the passages and extract every REMAINING distinct rule, row, case or calculation that is NOT already in the list above. If a table has rows you have not yet turned into rules, emit them now. Return {"candidates": []} only if nothing is left.
+`
+      : ""
+
   return `${lead}
 
-You are extracting business rules from ${sourceKind === "code" ? "source code" : "documentation"} into a structured catalog.
+You are extracting business rules from ${sourceKind === "code" ? "source code" : "documentation"} into a structured catalog. Your goal is MAXIMUM COMPLETENESS — capture every rule the source expresses, at fine granularity.
 
 ${buildComponentContextShort(component)}
 
@@ -79,6 +102,13 @@ ${summariseExistingRules(component.rules)}
 ${codeContext}
 Below are passages relevant to this component. Extract every distinct rule, calculation, formula or constraint you find. Do not invent rules — only emit what the ${sourceKind === "code" ? "code" : "text"} states or directly implies.
 
+GRANULARITY — this is the most important instruction:
+- A table with a header row and N data rows is almost always a DECISION or LOOKUP table: each row encodes its own rule (its column values are the conditions; the result column is the outcome). Extract ONE rule PER ROW, not a single summary rule. A 30-row table should yield on the order of 30 rules, not 5.
+- Capture a row's input/condition columns as \`given\`/\`when\` (or as the inputs of a \`formula\`), and its result column as \`then\` (or the formula's output). Put the concrete values in the rule so it is self-contained.
+- Each branch of an if/else, each case of a switch, each threshold band, and each named parameter or coefficient is its own rule — split them, do not merge.
+- A single formula that is applied with different parameters per row → emit the general formula AND each parametrised row as a distinct rule.
+- Prefer many small precise rules over a few broad ones. Only group rows when they are genuinely identical in logic.
+${sweep}
 RULE KINDS:
 - "formula"   — a calculation. Use \`formula\` for the expression (e.g. "total = base * (1 + rate)").
 - "rule"      — a conditional logic. Use \`given\` (precondition), \`when\` (trigger), \`then\` (outcome).
@@ -148,9 +178,66 @@ function str(value: unknown, max: number): string | undefined {
   return trimmed.slice(0, max)
 }
 
+// Parse one model response into validated candidates. Used by every round.
+function parseCandidatesFromResponse(
+  raw: string,
+  existingCount: number
+): RuleCandidate[] {
+  const parsed = extractJson(raw)
+  const out: RuleCandidate[] = []
+  if (!parsed || typeof parsed !== "object" || !("candidates" in parsed)) return out
+  const arr = (parsed as { candidates?: unknown[] }).candidates
+  if (!Array.isArray(arr)) return out
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue
+    const it = item as Record<string, unknown>
+    const name = str(it.name, 200)
+    const kind = it.kind
+    if (!name || !isValidKind(kind)) continue
+    const conf =
+      it.confidence === "high" || it.confidence === "medium" || it.confidence === "low"
+        ? it.confidence
+        : "medium"
+    const dupIdxRaw = it.duplicate_of_index
+    let duplicate_of_index: number | null = null
+    if (typeof dupIdxRaw === "number" && Number.isInteger(dupIdxRaw)) {
+      if (dupIdxRaw >= 0 && dupIdxRaw < existingCount) {
+        duplicate_of_index = dupIdxRaw
+      }
+    }
+    const sourceSection = str(it.source_section, 120) || undefined
+    out.push({
+      name,
+      kind,
+      summary: str(it.summary, 400),
+      description: str(it.description, 4000),
+      formula: kind === "formula" ? str(it.formula, 2000) : undefined,
+      given: kind === "rule" ? str(it.given, 600) : undefined,
+      when: kind === "rule" ? str(it.when, 600) : undefined,
+      then: kind === "rule" ? str(it.then, 600) : undefined,
+      enforced_in: kind === "constraint" ? str(it.enforced_in, 600) : undefined,
+      confidence: conf,
+      evidence: str(it.evidence, 240),
+      sourceSection,
+      duplicate_of_index,
+    })
+  }
+  return out
+}
+
+// Identity for de-duping a candidate across rounds. Name alone is too
+// coarse for a decision table (rows can share a name), so fold in the
+// discriminating fields too.
+function candidateKey(c: RuleCandidate): string {
+  return [c.name, c.formula, c.given, c.when, c.then]
+    .map((s) => (s || "").trim().toLowerCase().replace(/\s+/g, " "))
+    .join("¦")
+}
+
 export interface ExtractResult {
   candidates: RuleCandidate[]
   ms: number
+  rounds: number
 }
 
 export async function extractRuleCandidates(
@@ -162,49 +249,28 @@ export async function extractRuleCandidates(
   const t0 = Date.now()
   const llm = await getLLM()
   const lead = agentInstruction(await getAgent("rules-extractor"))
-  const prompt = buildPrompt(lead, component, sections, sourceKind, language)
-  const raw = await llm.complete({ prompt, maxTokens: PASS_2_MAX_TOKENS })
-  const parsed = extractJson(raw)
-  const candidates: RuleCandidate[] = []
-  if (parsed && typeof parsed === "object" && "candidates" in parsed) {
-    const arr = (parsed as { candidates?: unknown[] }).candidates
-    if (Array.isArray(arr)) {
-      const existingCount = component.rules?.length ?? 0
-      for (const item of arr) {
-        if (!item || typeof item !== "object") continue
-        const it = item as Record<string, unknown>
-        const name = str(it.name, 200)
-        const kind = it.kind
-        if (!name || !isValidKind(kind)) continue
-        const conf =
-          it.confidence === "high" || it.confidence === "medium" || it.confidence === "low"
-            ? it.confidence
-            : "medium"
-        const dupIdxRaw = it.duplicate_of_index
-        let duplicate_of_index: number | null = null
-        if (typeof dupIdxRaw === "number" && Number.isInteger(dupIdxRaw)) {
-          if (dupIdxRaw >= 0 && dupIdxRaw < existingCount) {
-            duplicate_of_index = dupIdxRaw
-          }
-        }
-        const sourceSection = str(it.source_section, 120) || undefined
-        candidates.push({
-          name,
-          kind,
-          summary: str(it.summary, 400),
-          description: str(it.description, 4000),
-          formula: kind === "formula" ? str(it.formula, 2000) : undefined,
-          given: kind === "rule" ? str(it.given, 600) : undefined,
-          when: kind === "rule" ? str(it.when, 600) : undefined,
-          then: kind === "rule" ? str(it.then, 600) : undefined,
-          enforced_in: kind === "constraint" ? str(it.enforced_in, 600) : undefined,
-          confidence: conf,
-          evidence: str(it.evidence, 240),
-          sourceSection,
-          duplicate_of_index,
-        })
-      }
+  const existingCount = component.rules?.length ?? 0
+
+  const collected: RuleCandidate[] = []
+  const seen = new Set<string>()
+  let rounds = 0
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    rounds++
+    const prompt = buildPrompt(lead, component, sections, sourceKind, language, collected)
+    const raw = await llm.complete({ prompt, maxTokens: PASS_2_MAX_TOKENS })
+    const fresh = parseCandidatesFromResponse(raw, existingCount)
+    let added = 0
+    for (const c of fresh) {
+      const key = candidateKey(c)
+      if (seen.has(key)) continue
+      seen.add(key)
+      collected.push(c)
+      added++
+      if (collected.length >= MAX_CANDIDATES) break
     }
+    // Stop when a sweep adds nothing new, or we hit the cap.
+    if (added === 0 || collected.length >= MAX_CANDIDATES) break
   }
-  return { candidates, ms: Date.now() - t0 }
+
+  return { candidates: collected, ms: Date.now() - t0, rounds }
 }

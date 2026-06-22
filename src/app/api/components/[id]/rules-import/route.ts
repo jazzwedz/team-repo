@@ -162,6 +162,7 @@ async function doPost(
         pass1Skipped,
         relevantSectionsCount: sections.length,
         candidatesCount: p2.candidates.length,
+        extractionRounds: p2.rounds,
         pass1Ms,
         pass2Ms: p2.ms,
         totalMs: Date.now() - t0,
