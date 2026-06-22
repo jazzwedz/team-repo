@@ -18,6 +18,7 @@ import {
   checkDocSize,
   extractConfluence,
   extractPdf,
+  extractXlsx,
   extractCode,
   type ExtractedDoc,
 } from "@/lib/extractors"
@@ -189,6 +190,17 @@ async function extractFromMultipart(request: Request): Promise<ExtractedDoc> {
   }
   const name = file.name || "upload"
   const lower = name.toLowerCase()
+  // Dispatch by extension first so document uploads (pdf / xlsx) work
+  // regardless of the declared kind.
+  if (lower.endsWith(".xlsx")) {
+    const buf = Buffer.from(await file.arrayBuffer())
+    return extractXlsx(buf, name)
+  }
+  if (lower.endsWith(".xls")) {
+    throw new ExtractError(
+      `Old binary .xls is not supported. Open "${name}" in Excel and "Save As .xlsx", then upload that.`
+    )
+  }
   const isPdf = lower.endsWith(".pdf")
   const declaredKind = (form.get("kind") as string | null) || (isPdf ? "pdf" : "code")
   if (declaredKind === "pdf") {

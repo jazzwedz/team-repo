@@ -2,7 +2,7 @@
 // extractors (PDF, Confluence, future DOCX) all normalise to this shape
 // so the rules-import flow does not care where the text came from.
 
-export type SourceKind = "pdf" | "confluence" | "code"
+export type SourceKind = "pdf" | "confluence" | "code" | "spreadsheet"
 
 export interface ExtractedDoc {
   kind: SourceKind

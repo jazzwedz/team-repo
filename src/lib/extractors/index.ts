@@ -5,6 +5,7 @@ export type { PagedPdf, PdfPage } from "./pdf"
 export { extractConfluence, resolvePageIdFromUrl } from "./confluence"
 export { extractCode, detectLanguage } from "./code"
 export type { CodeExtractedDoc } from "./code"
+export { extractXlsx } from "./xlsx"
 
 // Hard cap on extracted document size before we send anything to the LLM.
 // 320_000 chars ≈ ~80K tokens (4 chars / token rule-of-thumb) — generous

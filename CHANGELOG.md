@@ -7,6 +7,24 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-06-17
+
+### Added
+
+- **Import rules from Excel (.xlsx) — dependency-free.** The per-component
+  Rules & Calculations import now accepts `.xlsx` alongside PDF. A lot of
+  calculation logic lives in spreadsheets, so this reads each sheet into a
+  values table **plus the cell formulas** (the authoritative calculation
+  logic; rows read as worked examples), then the existing rules-extractor AI
+  turns that into structured rules — formulas, given/when/then, constraints.
+  - **No new npm dependency** (the corporate registry can't serve a
+    spreadsheet library): `.xlsx` is a ZIP of XML, so it's read with a small
+    built-in-`zlib` ZIP reader (`src/lib/zip.ts`) + light XML parsing
+    (`src/lib/extractors/xlsx.ts`). Both are **standalone and reusable** by
+    other parts of the tool later (e.g. the Catalog Curator).
+  - Legacy binary `.xls` is not supported — the upload rejects it with a
+    "Save As .xlsx" hint. Dates may surface as Excel serial numbers.
+
 ## [0.31.2] — 2026-06-17
 
 ### Changed

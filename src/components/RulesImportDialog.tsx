@@ -558,12 +558,12 @@ function SourceStep({
 
       {sourceKind === "pdf" && (
         <div className="space-y-3">
-          <Label htmlFor="rules-import-pdf">Choose a PDF</Label>
+          <Label htmlFor="rules-import-pdf">Choose a PDF or Excel (.xlsx)</Label>
           <div className="flex items-center gap-3">
             <input
               id="rules-import-pdf"
               type="file"
-              accept="application/pdf,.pdf"
+              accept="application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
               className="block w-full text-sm file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-input file:bg-background file:text-sm file:font-medium file:cursor-pointer hover:file:bg-muted"
             />
