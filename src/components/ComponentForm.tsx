@@ -42,7 +42,8 @@ import type {
   ComponentRule,
   RuleKind,
 } from "@/lib/types"
-import { Plus, Trash2, Info, ChevronUp, ChevronDown, AlertTriangle, ArrowDownAZ, Eye, EyeOff } from "lucide-react"
+import { Plus, Trash2, Info, ChevronUp, ChevronDown, AlertTriangle, ArrowDownAZ, Eye, EyeOff, Sparkles } from "lucide-react"
+import { RulesImportDialog } from "@/components/RulesImportDialog"
 import { MermaidPreview } from "@/components/mermaid-preview"
 import { buildRelationshipsMermaid } from "@/lib/component-mermaid"
 import {
@@ -234,6 +235,17 @@ export function ComponentForm({
   ].filter((t) => t.has)
   const activeTab = formTabs.some((t) => t.id === formTab) ? formTab : (formTabs[0]?.id ?? "overview")
   const onTab = (t: "overview" | "properties" | "rules"): boolean => !tabbed || activeTab === t
+
+  // Rules import — available wherever the Rules card renders (the full
+  // edit form's Rules tab AND the focused single-section dialog). Importing
+  // here appends the chosen candidates to the in-progress form state; the
+  // analyst saves the form to persist them (unlike the read-only detail
+  // page, which PUTs immediately). Only on an existing component — the
+  // import API reads the component from the catalog.
+  const [rulesImportOpen, setRulesImportOpen] = useState(false)
+  const handleRulesImport = async (newRules: ComponentRule[]): Promise<string | void> => {
+    setForm((f) => ({ ...f, rules: [...(f.rules || []), ...newRules] }))
+  }
 
   const [tagsInput, setTagsInput] = useState(
     initialData?.tags?.join(", ") || ""
@@ -1128,6 +1140,7 @@ export function ComponentForm({
       {showRules && onTab("rules") && (
       <Card>
         <CardHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="flex items-center gap-2">
             Rules &amp; Calculations
             <Tooltip>
@@ -1144,6 +1157,19 @@ export function ComponentForm({
               </TooltipContent>
             </Tooltip>
           </CardTitle>
+          {isEdit && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRulesImportOpen(true)}
+              title="AI scans a PDF, Excel, Confluence page or code for rules relevant to this component"
+            >
+              <Sparkles className="h-4 w-4 mr-1.5" />
+              Import rules
+            </Button>
+          )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {(form.rules || []).length === 0 ? (
@@ -1419,6 +1445,20 @@ export function ComponentForm({
       )}
 
       </fieldset>
+
+      {/* Rules import — rendered outside the disabled fieldset so it stays
+          interactive. Appends chosen candidates to the in-progress form;
+          the analyst saves the form to persist them. */}
+      {isEdit && (
+        <RulesImportDialog
+          open={rulesImportOpen}
+          onOpenChange={setRulesImportOpen}
+          componentId={form.id}
+          componentName={form.name}
+          existingRules={form.rules || []}
+          onImport={handleRulesImport}
+        />
+      )}
 
       {/* Save-conflict modal — surfaced when the server returns 409
           (someone else edited or holds the lock). User chooses Reload

@@ -7,6 +7,27 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-06-22
+
+### Added
+
+- **Rule source documents are stored on the component (provenance).** When
+  you import rules from a document (PDF / Excel / Confluence page), the
+  extracted text is now saved as a sidecar in the data repo under
+  `rule-docs/<componentId>/<docId>.md` (a per-component analogue of the
+  solution source-docs store). The import dialog lists these previously-used
+  documents and lets you **re-extract** from one (handy after the extractor
+  improves) or remove it. New API: `GET/POST /api/components/[id]/rule-docs`
+  and `GET/DELETE …/rule-docs/[docId]`; the rules-import endpoint also
+  accepts `source: { type: "stored", docId }`. Pasted code stays transient
+  (not stored).
+- **"Import rules" is now available while editing a component, not just on
+  the read-only detail page.** The button sits in the Rules card header, so
+  it appears in the full edit form's **Rules & Calculations** tab *and* in
+  the focused single-section edit dialog. Importing while editing appends
+  the chosen candidates to the in-progress form (you save the form to
+  persist them), instead of writing immediately.
+
 ## [0.37.0] — 2026-06-22
 
 ### Changed

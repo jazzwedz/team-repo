@@ -11,7 +11,7 @@
 // to the parent via `onImport(candidates)` so this dialog never knows
 // about the component-update API.
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,8 @@ import {
   Sparkles,
   X,
   Code as CodeIcon,
+  RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { RULE_KINDS, RULE_KIND_LABELS } from "@/lib/constants"
 import { AgentRunModal } from "@/components/AgentRunModal"
@@ -92,7 +94,16 @@ interface ImportMeta {
   pass1Skipped: boolean
   relevantSectionsCount: number
   candidatesCount: number
+  extractionRounds?: number
+  savedDoc?: RuleDocMeta
   totalMs: number
+}
+
+interface RuleDocMeta {
+  id: string
+  name: string
+  createdAt: string
+  chars: number
 }
 
 interface ApiSuccess {
@@ -152,7 +163,37 @@ export function RulesImportDialog({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKind, setErrorKind] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  // Documents previously stored on this component (provenance — what the
+  // rules were imported from). Loaded when the dialog opens; an analyst can
+  // re-extract from one or delete it.
+  const [ruleDocs, setRuleDocs] = useState<RuleDocMeta[]>([])
   const phaseTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const refreshRuleDocs = useCallback(async () => {
+    if (!componentId) return
+    try {
+      const r = await fetch(`/api/components/${componentId}/rule-docs`)
+      const d = await r.json().catch(() => null)
+      setRuleDocs(Array.isArray(d) ? d : [])
+    } catch {
+      setRuleDocs([])
+    }
+  }, [componentId])
+
+  useEffect(() => {
+    if (open) refreshRuleDocs()
+  }, [open, refreshRuleDocs])
+
+  async function deleteRuleDoc(docId: string) {
+    try {
+      await fetch(`/api/components/${componentId}/rule-docs/${encodeURIComponent(docId)}`, {
+        method: "DELETE",
+      })
+      await refreshRuleDocs()
+    } catch {
+      // non-fatal
+    }
+  }
 
   useEffect(() => {
     if (step === "analyzing") {
@@ -190,13 +231,20 @@ export function RulesImportDialog({
     onOpenChange(next)
   }
 
-  async function runAnalysis() {
+  async function runAnalysis(storedDocId?: string) {
     setErrorMsg(null)
     setErrorKind(null)
     setStep("analyzing")
     try {
       let res: Response
-      if (sourceKind === "pdf") {
+      if (storedDocId) {
+        // Re-extract from a document already stored on this component.
+        res = await fetch(`/api/components/${componentId}/rules-import`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: { type: "stored", docId: storedDocId } }),
+        })
+      } else if (sourceKind === "pdf") {
         if (!pdfFile) throw new Error("No PDF selected.")
         const form = new FormData()
         form.append("file", pdfFile)
@@ -260,6 +308,9 @@ export function RulesImportDialog({
       }
       setCandidates(data.candidates)
       setMeta(data.meta)
+      // A fresh upload/page is now stored on the component — refresh the
+      // provenance list so it shows if the analyst steps back.
+      void refreshRuleDocs()
       // Default selection: every non-duplicate is checked, duplicates
       // are unchecked (the analyst opts in explicitly).
       const initial: Record<number, boolean> = {}
@@ -364,20 +415,29 @@ export function RulesImportDialog({
 
         <div className="flex-1 overflow-y-auto">
           {step === "source" && (
-            <SourceStep
-              sourceKind={sourceKind}
-              setSourceKind={setSourceKind}
-              pdfFile={pdfFile}
-              setPdfFile={setPdfFile}
-              confluenceUrl={confluenceUrl}
-              setConfluenceUrl={setConfluenceUrl}
-              codeText={codeText}
-              setCodeText={setCodeText}
-              codeLanguage={codeLanguage}
-              setCodeLanguage={setCodeLanguage}
-              codeFilename={codeFilename}
-              setCodeFilename={setCodeFilename}
-            />
+            <div className="space-y-4">
+              {ruleDocs.length > 0 && (
+                <StoredDocsPanel
+                  docs={ruleDocs}
+                  onReExtract={(id) => runAnalysis(id)}
+                  onDelete={deleteRuleDoc}
+                />
+              )}
+              <SourceStep
+                sourceKind={sourceKind}
+                setSourceKind={setSourceKind}
+                pdfFile={pdfFile}
+                setPdfFile={setPdfFile}
+                confluenceUrl={confluenceUrl}
+                setConfluenceUrl={setConfluenceUrl}
+                codeText={codeText}
+                setCodeText={setCodeText}
+                codeLanguage={codeLanguage}
+                setCodeLanguage={setCodeLanguage}
+                codeFilename={codeFilename}
+                setCodeFilename={setCodeFilename}
+              />
+            </div>
           )}
 
           {step === "analyzing" && <AnalyzingStep phaseLabel={PHASE_LABELS[phaseIdx]} />}
@@ -408,7 +468,7 @@ export function RulesImportDialog({
             <>
               <Button variant="ghost" onClick={() => handleOpenChange(false)}>Cancel</Button>
               <Button
-                onClick={runAnalysis}
+                onClick={() => runAnalysis()}
                 disabled={
                   sourceKind === "pdf"
                     ? !pdfFile
@@ -464,6 +524,66 @@ export function RulesImportDialog({
 }
 
 // ----- Steps -----------------------------------------------------------
+
+// Documents this component's rules were previously imported from. The
+// analyst can re-run extraction from one (handy after the extractor was
+// improved) or remove it.
+function StoredDocsPanel({
+  docs,
+  onReExtract,
+  onDelete,
+}: {
+  docs: RuleDocMeta[]
+  onReExtract: (docId: string) => void
+  onDelete: (docId: string) => void
+}) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+      <div className="text-sm font-medium flex items-center gap-1.5">
+        <FileText className="h-4 w-4 text-indigo-500" />
+        Documents used for this component&apos;s rules
+        <span className="text-xs font-normal text-muted-foreground">({docs.length})</span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Stored with the component as provenance. Re-extract to re-run the
+        analysis on a document (e.g. after the extractor improved), or remove
+        one you no longer need.
+      </p>
+      <div className="space-y-1">
+        {docs.map((d) => (
+          <div key={d.id} className="flex items-center gap-2 rounded-md border bg-background p-2 text-xs">
+            <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="font-medium truncate">{d.name}</span>
+            <span className="text-muted-foreground whitespace-nowrap">· {d.chars.toLocaleString()} chars</span>
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => onReExtract(d.id)}
+                title="Re-run rule extraction on this document"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                Re-extract
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(d.id)}
+                title="Remove this stored document"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function SourceStep({
   sourceKind,

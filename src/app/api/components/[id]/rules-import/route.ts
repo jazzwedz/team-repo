@@ -31,6 +31,7 @@ import { extractRuleCandidates } from "@/lib/rules-import/extract"
 import type { RulesImportError } from "@/lib/rules-import/types"
 import { withRouteContext } from "@/lib/route-context"
 import { getLogger } from "@/lib/log"
+import { saveRuleDoc, getRuleDoc, type RuleDocMeta } from "@/lib/rule-docs-store"
 
 // Allow up to ~12 MB body for PDF uploads.
 export const maxDuration = 60
@@ -78,11 +79,19 @@ async function doPost(
 
     const contentType = (request.headers.get("content-type") || "").toLowerCase()
     let doc: ExtractedDoc
+    // Whether to persist the extracted text as a rule source document on
+    // the component. True for fresh uploads / Confluence pages (so the
+    // provenance is kept and re-extractable); false when re-extracting an
+    // already-stored doc, and false for pasted code (transient).
+    let storeAfter = false
     try {
       if (contentType.includes("multipart/form-data")) {
         doc = await extractFromMultipart(request)
+        storeAfter = true
       } else {
-        doc = await extractFromJson(request)
+        const extracted = await extractFromJson(request, id)
+        doc = extracted.doc
+        storeAfter = extracted.storeAfter
       }
     } catch (e) {
       if (e instanceof ExtractError) {
@@ -106,6 +115,21 @@ async function doPost(
         docChars: sizeCheck.chars,
         maxChars: sizeCheck.maxChars,
       }, 413)
+    }
+
+    // Persist the source document on the component (best-effort) so the
+    // analyst can see what the rules were derived from and re-extract it
+    // later. Never blocks the import if the save fails.
+    let savedDoc: RuleDocMeta | undefined
+    if (storeAfter && doc.kind !== "code") {
+      try {
+        savedDoc = await saveRuleDoc(id, { name: doc.name, text: doc.text })
+      } catch (e) {
+        getLogger().warn("Failed to store rule source document (continuing)", {
+          id,
+          err: e instanceof Error ? e.message : String(e),
+        })
+      }
     }
 
     const t0 = Date.now()
@@ -159,6 +183,7 @@ async function doPost(
       meta: {
         docName: doc.name,
         docChars: doc.text.length,
+        savedDoc,
         pass1Skipped,
         relevantSectionsCount: sections.length,
         candidatesCount: p2.candidates.length,
@@ -223,7 +248,10 @@ async function extractFromMultipart(request: Request): Promise<ExtractedDoc> {
   )
 }
 
-async function extractFromJson(request: Request): Promise<ExtractedDoc> {
+async function extractFromJson(
+  request: Request,
+  componentId: string
+): Promise<{ doc: ExtractedDoc; storeAfter: boolean }> {
   let body: {
     source?: {
       type?: string
@@ -231,6 +259,7 @@ async function extractFromJson(request: Request): Promise<ExtractedDoc> {
       text?: string
       language?: string
       filename?: string
+      docId?: string
     }
   }
   try {
@@ -241,27 +270,47 @@ async function extractFromJson(request: Request): Promise<ExtractedDoc> {
   const src = body.source
   if (!src || typeof src !== "object") {
     throw new ExtractError(
-      `Body must contain { source: { type: "confluence" | "code", ... } } or upload a file as multipart form-data.`
+      `Body must contain { source: { type: "confluence" | "code" | "stored", ... } } or upload a file as multipart form-data.`
     )
+  }
+  if (src.type === "stored") {
+    // Re-extract from a document already stored on this component.
+    if (typeof src.docId !== "string" || !src.docId.trim()) {
+      throw new ExtractError("Missing or empty 'docId' for source.type=stored.")
+    }
+    let stored
+    try {
+      stored = await getRuleDoc(componentId, src.docId.trim())
+    } catch {
+      throw new ExtractError("That stored document could not be found.")
+    }
+    // A stored doc's original kind is not tracked; treat it as a generic
+    // document (spreadsheet if it was an .xlsx, else a plain document).
+    const kind = stored.name.toLowerCase().endsWith(".xlsx") ? "spreadsheet" : "pdf"
+    return { doc: { kind, name: stored.name, text: stored.text }, storeAfter: false }
   }
   if (src.type === "confluence") {
     if (typeof src.url !== "string" || !src.url.trim()) {
       throw new ExtractError("Missing or empty Confluence url / page id.")
     }
-    return extractConfluence(src.url.trim())
+    return { doc: await extractConfluence(src.url.trim()), storeAfter: true }
   }
   if (src.type === "code") {
     if (typeof src.text !== "string" || !src.text.trim()) {
       throw new ExtractError("Missing or empty 'text' for source.type=code.")
     }
-    return extractCode({
-      text: src.text,
-      filename: src.filename,
-      language: src.language,
-    })
+    return {
+      doc: await extractCode({
+        text: src.text,
+        filename: src.filename,
+        language: src.language,
+      }),
+      // Pasted code is transient — don't persist it as a rule document.
+      storeAfter: false,
+    }
   }
   throw new ExtractError(
-    `Unsupported source type "${src.type}". Use "confluence", "code", or upload a PDF.`
+    `Unsupported source type "${src.type}". Use "confluence", "code", "stored", or upload a file.`
   )
 }
 
