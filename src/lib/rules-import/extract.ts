@@ -102,12 +102,10 @@ ${summariseExistingRules(component.rules)}
 ${codeContext}
 Below are passages relevant to this component. Extract every distinct rule, calculation, formula or constraint you find. Do not invent rules — only emit what the ${sourceKind === "code" ? "code" : "text"} states or directly implies.
 
-GRANULARITY — this is the most important instruction:
-- A table with a header row and N data rows is almost always a DECISION or LOOKUP table: each row encodes its own rule (its column values are the conditions; the result column is the outcome). Extract ONE rule PER ROW, not a single summary rule. A 30-row table should yield on the order of 30 rules, not 5.
-- Capture a row's input/condition columns as \`given\`/\`when\` (or as the inputs of a \`formula\`), and its result column as \`then\` (or the formula's output). Put the concrete values in the rule so it is self-contained.
-- Each branch of an if/else, each case of a switch, each threshold band, and each named parameter or coefficient is its own rule — split them, do not merge.
-- A single formula that is applied with different parameters per row → emit the general formula AND each parametrised row as a distinct rule.
-- Prefer many small precise rules over a few broad ones. Only group rows when they are genuinely identical in logic.
+GRANULARITY — aim for COMPLETENESS and fine detail, whatever the source is (prose spec, table, code, or a mix):
+- Emit a separate rule for each distinct piece of logic the source states: each calculation/formula, each conditional (given/when/then), each constraint/invariant, each numbered or "must / shall" requirement, each threshold band, each named parameter or coefficient, each branch of an if/else, each case of a switch. Split these out rather than merging several into one broad rule.
+- For TABULAR data (a header row + many rows): such a sheet is often a lookup / parameter / decision table where a row can encode its own rule (its key/condition columns map to a result/value column). Use judgement — extract per-row when rows carry genuinely distinct logic or values (capture the row's values so each rule is self-contained), and group rows only when they are truly identical in logic. Per-row is common but NOT mandatory: don't split a single rule across rows artificially, and don't collapse a rich table into just one or two rules either.
+- Prefer several small, precise rules over a few broad ones — extracting only ~5 rules from a source with dozens of distinct cases is too shallow. But never invent: every rule must be supported by the source.
 ${sweep}
 RULE KINDS:
 - "formula"   — a calculation. Use \`formula\` for the expression (e.g. "total = base * (1 + rate)").

@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.1] — 2026-06-22
+
+### Changed
+
+- **Rules extraction guidance generalised and softened.** The v0.36.0
+  granularity guidance was too table-centric and too rigid ("one rule per
+  row"). It now applies to any source type (prose spec, table, code, mixed)
+  and frames per-row extraction as a judgement call — common but not
+  mandatory: extract per-row when rows carry genuinely distinct logic,
+  group truly-identical rows, and never split or pad artificially. Still
+  biased toward completeness (5 rules from dozens of distinct cases is too
+  shallow). The xlsx framing was softened to match.
+
 ## [0.36.0] — 2026-06-22
 
 ### Changed

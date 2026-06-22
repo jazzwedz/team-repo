@@ -195,7 +195,7 @@ export async function extractXlsx(buffer: Buffer, filename: string): Promise<Ext
 
   const text = [
     `Spreadsheet "${filename}" — cell values and formulas, per sheet.`,
-    `How to read this: the FORMULAS are explicit calculation logic. The TABLE itself is data — and a sheet with a header row plus many data rows is usually a LOOKUP / PARAMETER / DECISION table where EACH ROW encodes its own rule (its condition/key columns map to a result/value column). Treat every distinct row as a candidate rule, not merely as an example. Dates may appear as Excel serial numbers.`,
+    `How to read this: the FORMULAS are explicit calculation logic. The TABLE is data — and a sheet with a header row plus many data rows is often a LOOKUP / PARAMETER / DECISION table where each row can encode its own rule (its key/condition columns map to a result/value column). Consider each row as a possible rule rather than a mere example, using judgement. Dates may appear as Excel serial numbers.`,
     ...blocks,
   ].join("\n\n")
 
