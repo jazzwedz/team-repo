@@ -34,10 +34,16 @@ export async function markdownToStorage(
 ): Promise<string> {
   const cleaned = replaceMermaidBlocks(markdown, opts.mermaidImageFiles)
   const html = await marked.parse(cleaned, { async: true, gfm: true, breaks: false })
+  // marked passes raw inline HTML through verbatim, so prose the AI writes
+  // like `List<String>` or `if a < b and c > d` reaches Confluence as a
+  // malformed pseudo-tag and its strict XHTML parser rejects the whole page
+  // ("Unexpected character '>' expected '='"). Escape any '<' that isn't a
+  // well-formed instance of a known HTML tag before further processing.
+  let storage = neutralizeStrayMarkup(html as string)
   // Confluence storage format is strict XHTML — self-close void tags BEFORE
   // code blocks become CDATA (where literal <br> in a code sample must be
   // left untouched). At this point code content is still HTML-escaped.
-  let storage = selfCloseVoidTags(html as string)
+  storage = selfCloseVoidTags(storage)
   storage = processCodeBlocks(storage)
   storage = replaceTableOfContents(storage)
   storage = polishParagraphs(storage)
@@ -51,6 +57,46 @@ export async function markdownToStorage(
   return storage
 }
 
+// HTML element names marked legitimately emits. Anything else that looks
+// like a tag in the rendered output came from raw inline HTML in the AI
+// prose (e.g. `List<String>`) and must be neutralized — Confluence storage
+// is strict XHTML and rejects unknown/boolean-attribute pseudo-tags.
+const KNOWN_HTML_TAGS = new Set([
+  "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+  "ul", "ol", "li", "dl", "dt", "dd",
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
+  "colgroup", "col",
+  "pre", "code", "kbd", "samp", "var",
+  "strong", "em", "b", "i", "u", "s", "del", "ins", "mark", "small",
+  "sub", "sup", "abbr", "cite", "q",
+  "a", "img", "span", "div", "blockquote", "input", "label",
+])
+
+// Escape any '<' that does not begin a well-formed instance of a known HTML
+// tag. A "well-formed" tag here is an open/close/self-closing tag whose
+// attributes are all quoted name="value" pairs — exactly what marked emits.
+// This catches both unknown tag names (`<String>`) and malformed ones
+// (`<b and c>`, boolean attributes) while leaving real markup intact. Runs
+// on marked's output, before our own XHTML macros are injected.
+function neutralizeStrayMarkup(html: string): string {
+  const tagRe =
+    /<\/?([a-zA-Z][a-zA-Z0-9]*)(?:\s+[a-zA-Z_:][-a-zA-Z0-9_:.]*\s*=\s*"[^"]*")*\s*\/?>/g
+  let out = ""
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = tagRe.exec(html)) !== null) {
+    out += escapeLt(html.slice(last, m.index))
+    out += KNOWN_HTML_TAGS.has(m[1].toLowerCase()) ? m[0] : escapeLt(m[0])
+    last = tagRe.lastIndex
+  }
+  out += escapeLt(html.slice(last))
+  return out
+}
+
+function escapeLt(s: string): string {
+  return s.replace(/</g, "&lt;")
+}
+
 // Confluence's XHTML parser rejects HTML-style void tags ("Unexpected close
 // tag </p>; expected </br>"). marked emits <br>, <hr> and <img ...> in HTML
 // form; rewrite them to self-closing XHTML. Idempotent.
@@ -59,6 +105,7 @@ function selfCloseVoidTags(html: string): string {
     .replace(/<br\s*\/?>/gi, "<br/>")
     .replace(/<hr\s*\/?>/gi, "<hr/>")
     .replace(/<img\b([^>]*?)\s*\/?>/gi, (_m, attrs) => `<img${attrs}/>`)
+    .replace(/<input\b([^>]*?)\s*\/?>/gi, (_m, attrs) => `<input${attrs}/>`)
 }
 
 // Handle ```mermaid ... ``` fenced blocks. Without `imageFiles` every block

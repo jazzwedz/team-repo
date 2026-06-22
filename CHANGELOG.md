@@ -7,6 +7,20 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.1] — 2026-06-22
+
+### Fixed
+
+- **DSD publish to Confluence failed with "Error parsing xhtml: Unexpected
+  character '>' expected '='".** `marked` passes raw inline HTML through
+  verbatim, so prose the AI writes in a DSD — a generic type like
+  `List<String>`, or a comparison like `if a < b and c > d` — reached
+  Confluence as a malformed pseudo-tag and its strict XHTML parser rejected
+  the whole page. The renderer now neutralizes any `<` that isn't a
+  well-formed instance of a known HTML tag (escaping `<String>`, `<T>`,
+  `<b and c>`, etc.) while leaving real markup intact. Also self-close void
+  `<input>` (task-list checkboxes) to avoid a related XHTML error.
+
 ## [0.32.0] — 2026-06-17
 
 ### Added
