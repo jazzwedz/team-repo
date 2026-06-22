@@ -26,6 +26,8 @@ export interface DsdGenerateOptions {
   audience: "technical" | "management" | "mixed"
   language: "en" | "sk"
   includeChapters: string[]
+  /** Read the connected source repo as grounding. Off = much faster. */
+  useSourceCode: boolean
 }
 
 interface SourceDocMeta {
@@ -85,8 +87,11 @@ export function GenerateDsdModal({
   // from the UI; the values are still passed through to the generator.
   const [language, setLanguage] = useState<"en" | "sk">("en")
   // Whether the source-code repo (SRC_ADO_*) is connected — drives the
-  // "source code will be used" note.
+  // "use source code" toggle.
   const [sourceConfigured, setSourceConfigured] = useState(false)
+  // Use the connected source repo as grounding (on by default). Turning it
+  // off skips the serial repo reads + Code Search queries — much faster.
+  const [useSourceCode, setUseSourceCode] = useState(true)
   useEffect(() => {
     fetch("/api/source-code/status")
       .then((r) => r.json())
@@ -226,7 +231,7 @@ export function GenerateDsdModal({
       if (v) provided[c.id] = v
     }
     const includeChapters = ALL_CHAPTERS.filter((c) => !excluded.has(c.id)).map((c) => c.id)
-    onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters })
+    onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters, useSourceCode })
   }
 
   return (
@@ -257,26 +262,44 @@ export function GenerateDsdModal({
             />
           </div>
 
+          {/* Source-code grounding toggle — shown whenever the source repo is
+              connected. On by default; turning it off skips the (serial)
+              repo reads + Code Search queries, which is the main driver of
+              generation time. Applies to both modes. */}
+          {sourceConfigured && (
+            <label className="rounded-md border bg-muted/20 p-3 text-sm flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 mt-0.5 shrink-0"
+                checked={useSourceCode}
+                onChange={(e) => setUseSourceCode(e.target.checked)}
+              />
+              <span className="flex items-start gap-2">
+                <FileCode2 className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
+                <span>
+                  <span className="font-medium">Use source code{useSourceCode ? "" : " — off"}.</span>{" "}
+                  <span className="text-muted-foreground">
+                    {useSourceCode ? (
+                      <>
+                        The connected repository is read (read-only) for any member
+                        mapped to it (<code>source.paths</code>) and used as grounding
+                        for the requirements, data structures and interactions.{" "}
+                        <span className="text-amber-700">Adds time — it queries the repo and code search serially.</span>
+                      </>
+                    ) : (
+                      <>
+                        The repository is not read. Generation is noticeably faster and
+                        grounds only on the catalog and any source requirements you attach.
+                      </>
+                    )}
+                  </span>
+                </span>
+              </span>
+            </label>
+          )}
+
           {mode === "team" && (
             <>
-              {/* Source-code grounding note — shown only when the source repo
-                  is connected. DSD generation reads the files mapped on each
-                  member (source.paths) as authoritative grounding. */}
-              {sourceConfigured && (
-                <div className="rounded-md border bg-muted/20 p-3 text-sm flex items-start gap-2">
-                  <FileCode2 className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
-                  <span>
-                    <span className="font-medium">Source code will be used.</span>{" "}
-                    <span className="text-muted-foreground">
-                      The connected repository is read (read-only) for any member
-                      mapped to it (<code>source.paths</code>) and used as
-                      grounding for the requirements, data structures and
-                      interactions.
-                    </span>
-                  </span>
-                </div>
-              )}
-
               {/* reuse locked */}
               {hasPreviousLocked && (
                 <label className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-sm cursor-pointer">

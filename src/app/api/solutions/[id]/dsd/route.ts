@@ -56,6 +56,9 @@ export async function POST(
       if (body && ["concise", "standard", "detailed"].includes(body.depth)) options.depth = body.depth
       if (body && ["technical", "management", "mixed"].includes(body.audience)) options.audience = body.audience
       if (body && ["en", "sk"].includes(body.language)) options.language = body.language
+      // Source-code grounding is on by default; the analyst can turn it off
+      // (faster — skips the serial repo reads + Code Search queries).
+      if (body && typeof body.useSourceCode === "boolean") options.useSourceCode = body.useSourceCode
       if (body && Array.isArray(body.includeChapters)) {
         options.includeChapters = body.includeChapters.filter((x: unknown) => typeof x === "string")
       }

@@ -73,6 +73,10 @@ export interface DsdOptions {
    *  already extracted to plain text. Fed to the writers as grounding for
    *  purpose, references, traceability and functional-requirement depth. */
   sourceDoc?: { name: string; text: string }
+  /** Read the connected source repository (files + Code Search) as grounding.
+   *  Defaults to true. Set false to skip it — much faster, since the repo
+   *  reads and Code Search queries are serial network round-trips. */
+  useSourceCode?: boolean
 }
 
 // How much of the source document to feed into the prompt. Bounds the
@@ -154,7 +158,10 @@ async function runDsd(
   }
   // Append real source-code snippets for members that map to code in the
   // connected source repo (read-only). Best-effort: never block generation.
-  if (isSourceCodeConfigured()) {
+  // Skipped when the analyst opted out (useSourceCode === false) — the repo
+  // reads + Code Search queries are serial network calls and dominate the
+  // generation time.
+  if (options.useSourceCode !== false && isSourceCodeConfigured()) {
     try {
       const evidence = await gatherSourceEvidence(solution, components)
       if (evidence) facts += "\n" + evidence

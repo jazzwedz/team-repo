@@ -7,6 +7,21 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-06-22
+
+### Added
+
+- **"Use source code" toggle in the Generate DSD modal.** Source-code
+  grounding reads the connected repository for every mapped member
+  (`gatherSourceEvidence`) and runs up to a dozen serial ADO Code Search
+  queries (`gatherCodeInteractions`) — serial network round-trips that are
+  the main driver of DSD generation time. The static "Source code will be
+  used" note is now a checkbox (on by default, applies to both modes).
+  Turning it off skips the repo reads + Code Search entirely, so generation
+  is noticeably faster and grounds only on the catalog plus any attached
+  source requirements. The choice is passed through as
+  `DsdOptions.useSourceCode` and gated in `runDsd`.
+
 ## [0.34.0] — 2026-06-22
 
 ### Changed
