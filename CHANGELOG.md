@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-06-22
+
+### Added
+
+- **Rich review step in the solution composer.** The final "Review" step of
+  the New Solution wizard was an empty one-line count. It now renders a
+  deterministic (no-AI) summary of everything known about the solution:
+  name / owner / goal / description, a count strip, the delivered
+  capabilities, the members (with disposition + role), the flows, **the
+  architecture diagram, and a sequence diagram per process**. Lifelines are
+  labelled from both existing and about-to-be-created components, so the
+  analyst sees the full picture before clicking Create.
+
 ## [0.32.1] — 2026-06-22
 
 ### Fixed

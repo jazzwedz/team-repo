@@ -29,6 +29,7 @@ import { ChipPicker } from "@/components/ChipPicker"
 import { ProcessesEditor } from "@/components/ProcessesEditor"
 import { AgentRunModal } from "@/components/AgentRunModal"
 import { buildSolutionMermaid } from "@/lib/architecture-mermaid"
+import { buildSolutionSequenceMermaid } from "@/lib/solution-sequence"
 import { proposeSolution, type SolutionProposal } from "@/lib/solution-proposer"
 import { slugifyId } from "@/lib/component-schema"
 import {
@@ -451,6 +452,15 @@ export default function NewSolutionPage() {
     const pseudo: Component[] = assembled.newComponents.map((c) => c)
     return buildSolutionMermaid(assembled.members, [...components, ...pseudo], assembled.flows)
   }, [assembled, components])
+
+  // id → display name, covering existing + the about-to-be-created
+  // components, so the review's sequence diagrams label their lifelines.
+  const nameLookup = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of components) m.set(c.id, c.name)
+    for (const c of assembled.newComponents) m.set(c.id, c.name)
+    return m
+  }, [components, assembled.newComponents])
 
   const create = async () => {
     setCreating(true)
@@ -926,13 +936,130 @@ export default function NewSolutionPage() {
 
       {/* STEP 5 — review */}
       {step === 5 && (
-        <div className="space-y-4">
-          <div className="text-sm text-muted-foreground">
-            <strong>{assembled.members.length}</strong> members ·{" "}
-            <strong>{assembled.newComponents.length}</strong> new component(s) to create ·{" "}
-            <strong>{assembled.flows.length}</strong> flows ·{" "}
-            <strong>{processes.length}</strong> process(es)
+        <div className="space-y-5">
+          {/* Overview header — the solution's identity at a glance. */}
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">{name.trim() || "Untitled solution"}</h2>
+            <p className="text-xs text-muted-foreground">
+              {owner ? <>Owner: <span className="font-medium">{owner}</span> · </> : null}
+              draft · {assembled.members.length} member(s)
+            </p>
+            {goal.trim() && (
+              <p className="text-sm pt-1">
+                <span className="font-medium">Goal:</span> {goal.trim()}
+              </p>
+            )}
+            {desc.trim() && (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{desc.trim()}</p>
+            )}
           </div>
+
+          {/* Count strip. */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              [assembled.members.length, "members"],
+              [assembled.newComponents.length, "new to create"],
+              [assembled.flows.length, "flows"],
+              [processes.length, "processes"],
+              [selCaps.length, "capabilities"],
+            ].map(([n, label]) => (
+              <Badge key={label as string} variant="secondary" className="text-xs font-normal">
+                <span className="font-semibold mr-1">{n}</span>
+                {label}
+              </Badge>
+            ))}
+          </div>
+
+          {/* Delivered capabilities. */}
+          {selCaps.length > 0 && (
+            <section className="space-y-1.5">
+              <h3 className="text-sm font-semibold">Delivers — capabilities</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {selCaps.map((c) => (
+                  <Badge key={c} variant="outline" className="text-xs font-normal">{c}</Badge>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Members. */}
+          {assembled.members.length > 0 && (
+            <section className="space-y-1.5">
+              <h3 className="text-sm font-semibold">Members ({assembled.members.length})</h3>
+              <div className="rounded-md border divide-y">
+                {assembled.members.map((m) => {
+                  const isNew = m.disposition === "new"
+                  return (
+                    <div key={m.component} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <span className="font-medium truncate">{nameLookup.get(m.component) || m.component}</span>
+                      <Badge variant={isNew ? "default" : "outline"} className="text-[10px] shrink-0">
+                        {isNew ? "new" : MEMBER_DISPOSITION_LABELS[m.disposition]}
+                      </Badge>
+                      {m.role && <span className="text-xs text-muted-foreground truncate">· {m.role}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Flows. */}
+          {assembled.flows.length > 0 && (
+            <section className="space-y-1.5">
+              <h3 className="text-sm font-semibold">Flows ({assembled.flows.length})</h3>
+              <div className="space-y-1">
+                {assembled.flows.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span>{nameLookup.get(f.from) || f.from} → {nameLookup.get(f.to) || f.to}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {f.role}{f.protocol ? ` · ${f.protocol}` : ""}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Architecture diagram. */}
+          <section className="space-y-1.5">
+            <h3 className="text-sm font-semibold">Architecture</h3>
+            <div className="rounded-md border p-2">
+              <MermaidPreview
+                chart={previewChart}
+                className="w-full"
+                zoomable
+                expandable
+                expandTitle={`${name.trim() || "Solution"} — architecture`}
+                height={360}
+              />
+            </div>
+          </section>
+
+          {/* Process sequence diagram(s). */}
+          {processes.length > 0 && (
+            <section className="space-y-1.5">
+              <h3 className="text-sm font-semibold">
+                Process {processes.length > 1 ? "sequences" : "sequence"} ({processes.length})
+              </h3>
+              <div className="space-y-3">
+                {processes.map((p, i) => (
+                  <div key={i} className="rounded-md border p-2 space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground px-1">
+                      {p.name?.trim() || `Process ${i + 1}`}
+                    </div>
+                    <MermaidPreview
+                      chart={buildSolutionSequenceMermaid(p, nameLookup)}
+                      className="w-full"
+                      zoomable
+                      expandable
+                      expandTitle={`${p.name?.trim() || "Process"} — sequence`}
+                      height={320}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* A name is required to save. The AI-assist path can reach this
               step without one, so let the analyst fix it right here instead
