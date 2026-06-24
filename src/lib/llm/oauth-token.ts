@@ -13,6 +13,7 @@
 // triggers exactly one round-trip to the IdP.
 
 import { maskSecret } from "../diagnostics"
+import { describeFetchError } from "./fetch-error"
 
 export interface OAuthClientCredentialsConfig {
   tokenUrl: string
@@ -125,14 +126,22 @@ export class OAuthTokenProvider {
   }
 
   private async fetchToken(): Promise<string> {
-    const res = await fetch(this.config.tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-      body: this.formBody(),
-    })
+    let res: Response
+    try {
+      res = await fetch(this.config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: this.formBody(),
+      })
+    } catch (err) {
+      throw new Error(
+        describeFetchError(err, `the OAuth token endpoint at ${this.config.tokenUrl}`),
+        { cause: err }
+      )
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "")
       throw new Error(

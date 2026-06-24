@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.1] — 2026-06-24
+
+### Fixed
+
+- **AI calls that fail to reach the gateway now say why.** A transport-level
+  failure (DNS, connection refused/reset, connect timeout, TLS) surfaced as
+  the useless `fetch failed` (e.g. "AI compose failed: fetch failed"),
+  because Node hides the real reason in `error.cause`. The LLM gateway call
+  and the OAuth token call now unwrap the cause and name the host —
+  `Could not reach the LLM gateway at <url> [ECONNREFUSED] — …` — so it's
+  clear whether it's the network/VPN, the gateway URL, or DNS. No behaviour
+  change otherwise; genuine HTTP errors (4xx/5xx) pass through as before.
+
 ## [0.38.0] — 2026-06-22
 
 ### Added

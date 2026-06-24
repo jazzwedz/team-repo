@@ -15,6 +15,7 @@ import {
   type OAuthClientCredentialsConfig,
 } from "./oauth-token"
 import { promises as dns } from "node:dns"
+import { describeFetchError } from "./fetch-error"
 
 interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: string | null } }>
@@ -70,7 +71,12 @@ export class OpenAICompatibleProvider implements LLMProvider {
     })
 
     let bearer = await this.acquireBearer()
-    let res = await this.postChat(url, bearer, body)
+    let res: Response
+    try {
+      res = await this.postChat(url, bearer, body)
+    } catch (err) {
+      throw new Error(describeFetchError(err, `the LLM gateway at ${this.baseUrl}`), { cause: err })
+    }
 
     // In OAuth mode, 401 can mean the token expired between cache and
     // wire (e.g. a clock skew, or an IdP rolled the signing key). Drop
@@ -79,7 +85,11 @@ export class OpenAICompatibleProvider implements LLMProvider {
     if (res.status === 401 && this.auth.kind === "oauth") {
       this.auth.provider.invalidate()
       bearer = await this.acquireBearer()
-      res = await this.postChat(url, bearer, body)
+      try {
+        res = await this.postChat(url, bearer, body)
+      } catch (err) {
+        throw new Error(describeFetchError(err, `the LLM gateway at ${this.baseUrl}`), { cause: err })
+      }
     }
 
     if (!res.ok) {
