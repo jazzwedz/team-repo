@@ -7,6 +7,15 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.2] — 2026-06-25
+
+### Changed
+
+- **Solutions list shows fuller names.** On the solutions overview the card
+  title font was reduced (`text-lg` → `text-base`) so longer names fit, and
+  a `title` tooltip was added so the full name shows on hover when it is
+  still truncated.
+
 ## [0.38.1] — 2026-06-24
 
 ### Fixed

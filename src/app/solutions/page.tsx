@@ -117,7 +117,7 @@ export default function SolutionsPage() {
               <Card className="h-full hover:border-foreground/30 transition-colors">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-lg truncate">{s.name}</CardTitle>
+                    <CardTitle className="text-base truncate" title={s.name}>{s.name}</CardTitle>
                     <Badge
                       variant="outline"
                       className={`shrink-0 text-[10px] uppercase ${SOLUTION_STATUS_COLORS[s.status] || ""}`}
