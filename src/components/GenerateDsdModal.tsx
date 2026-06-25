@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Sparkles, FileText, Paperclip, Loader2, X, FileCode2 } from "lucide-react"
-import { ALL_CHAPTERS } from "@/lib/dsd-sections"
+import { ALL_CHAPTERS, flatChapters, type FlatChapter } from "@/lib/dsd-sections"
 
 export interface DsdGenerateOptions {
   mode: "quick" | "team"
@@ -101,6 +101,21 @@ export function GenerateDsdModal({
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [showProvide, setShowProvide] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  // The DSD output structure is analyst-editable; load the active chapter
+  // list (falls back to the built-in default until edits are saved).
+  const [chapters, setChapters] = useState<FlatChapter[]>(ALL_CHAPTERS)
+  useEffect(() => {
+    if (!open) return
+    fetch("/api/dsd-structure")
+      .then((r) => r.json())
+      .then((d) => {
+        const groups = d?.structure?.groups
+        if (Array.isArray(groups)) setChapters(flatChapters(groups))
+      })
+      .catch(() => {
+        /* keep default */
+      })
+  }, [open])
 
   // Source requirements documents (BRD/spec) — stored ON the solution and
   // reused across the composer and every DSD run (upload once).
@@ -218,19 +233,19 @@ export function GenerateDsdModal({
     edits[id] !== undefined ? edits[id] : useLast && hasPreviousLocked ? latestLocked[id] || "" : ""
 
   const lockedCount = useMemo(
-    () => ALL_CHAPTERS.filter((c) => valueFor(c.id).trim() && !excluded.has(c.id)).length,
+    () => chapters.filter((c) => valueFor(c.id).trim() && !excluded.has(c.id)).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [edits, useLast, excluded, latestLocked]
+    [edits, useLast, excluded, latestLocked, chapters]
   )
 
   const start = () => {
     const provided: Record<string, string> = {}
-    for (const c of ALL_CHAPTERS) {
+    for (const c of chapters) {
       if (excluded.has(c.id)) continue
       const v = valueFor(c.id).trim()
       if (v) provided[c.id] = v
     }
-    const includeChapters = ALL_CHAPTERS.filter((c) => !excluded.has(c.id)).map((c) => c.id)
+    const includeChapters = chapters.filter((c) => !excluded.has(c.id)).map((c) => c.id)
     onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters, useSourceCode })
   }
 
@@ -401,7 +416,7 @@ export function GenerateDsdModal({
                     <p className="text-xs text-muted-foreground">
                       Paste any chapter you already have — the team keeps it <span className="font-medium">word-for-word (🔒)</span> and writes the rest around it.
                     </p>
-                    {ALL_CHAPTERS.filter((c) => !excluded.has(c.id)).map((c) => {
+                    {chapters.filter((c) => !excluded.has(c.id)).map((c) => {
                       const v = valueFor(c.id)
                       const locked = !!v.trim()
                       return (
@@ -435,7 +450,7 @@ export function GenerateDsdModal({
                     <div>
                       <div className="text-sm font-medium mb-1">Chapters to include</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                        {ALL_CHAPTERS.map((c) => (
+                        {chapters.map((c) => (
                           <label key={c.id} className="flex items-center gap-2 text-xs">
                             <input
                               type="checkbox"

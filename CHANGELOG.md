@@ -7,6 +7,27 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-06-25
+
+### Added
+
+- **The DSD output structure is now editable** — a new **DSD Output** page
+  (next to Agents). It's the counterpart to the trainable agents: agents are
+  *how* each section is written; this defines *what* the DSD contains. You
+  can edit each chapter's **title** and **guidance**, **add / delete /
+  reorder** chapters, **move** a chapter to a different writer, and edit the
+  writers'/critics' focus. **Document History** (chapter 1) is always added
+  automatically.
+  - Persisted to `dsd-structure.yaml` in the data repo (like the agents),
+    with the built-in structure as the default — until you save an edit,
+    generation behaves exactly as before.
+  - The five writer agents and four critics are fixed (they map to trainable
+    personas); the chapter list and descriptive text are what's editable.
+  - The generator (`solution-dsd.ts`) and the Generate-DSD modal now read the
+    active structure; the deterministic Runtime-Flow and chunked Functional-
+    Requirements injections are skipped if you remove those chapters.
+  - New API: `GET/PUT /api/dsd-structure`, `POST /api/dsd-structure/reset`.
+
 ## [0.38.2] — 2026-06-25
 
 ### Changed

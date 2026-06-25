@@ -143,3 +143,31 @@ export const ALL_CHAPTERS: FlatChapter[] = WRITER_GROUPS.flatMap((g) =>
 )
 
 export const CHAPTER_BY_ID = new Map(ALL_CHAPTERS.map((c) => [c.id, c]))
+
+// ---------------------------------------------------------------------------
+// Editable output definition.
+//
+// The structure above (which chapters exist, their titles + guidance, which
+// writer owns them, the critics' focus) is the DEFAULT. At runtime it can be
+// overridden by an analyst-editable copy stored in the data repo
+// (dsd-structure.yaml) — same idea as the trainable agents. The five writer
+// agent ids and four critic agent ids are FIXED (they map to trainable agent
+// personas); what's editable is the chapter list and the descriptive text.
+// ---------------------------------------------------------------------------
+
+export interface DsdStructure {
+  groups: WriterGroup[]
+  critics: CriticLens[]
+}
+
+export const DEFAULT_DSD_STRUCTURE: DsdStructure = {
+  groups: WRITER_GROUPS,
+  critics: CRITIC_LENSES,
+}
+
+/** Flatten any structure's groups into the ordered chapter list. */
+export function flatChapters(groups: WriterGroup[]): FlatChapter[] {
+  return groups.flatMap((g) =>
+    g.chapters.map((c) => ({ id: c.id, title: c.title, guidance: c.guidance, groupId: g.agentId, groupName: g.name }))
+  )
+}

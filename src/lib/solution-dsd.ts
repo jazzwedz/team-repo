@@ -24,14 +24,14 @@ import { codeSearch } from "./code-search"
 import { buildSolutionSequenceMermaid } from "./solution-sequence"
 import { getDataModel, isDataModelConfigured } from "./data-model"
 import {
-  WRITER_GROUPS,
-  CRITIC_LENSES,
   LEAD_AGENT_ID,
-  ALL_CHAPTERS,
+  flatChapters,
   type WriterGroup,
   type CriticLens,
   type DsdChapter,
+  type DsdStructure,
 } from "./dsd-sections"
+import { getDsdStructure } from "./dsd-structure-store"
 
 // ----------------------------- job store -----------------------------
 
@@ -198,8 +198,11 @@ async function runDsd(
   const llm: any = await getLLM()
 
   const directives = buildDirectives(options)
+  // The output structure (chapters + writers + critics) is analyst-editable;
+  // load the active one (built-in default until they save edits).
+  const structure = await getDsdStructure()
   const result = mode === "team"
-    ? await runTeamDsd(id, solution, facts, llm, provided, options, directives)
+    ? await runTeamDsd(id, solution, facts, llm, provided, options, directives, structure)
     : await runQuickDsd(id, solution, facts, llm, directives)
 
   // Persist the artifact to the DSD library (best-effort: even if the
@@ -291,8 +294,17 @@ async function runTeamDsd(
   llm: any,
   provided: Record<string, string>,
   options: DsdOptions,
-  directives: string
+  directives: string,
+  structure: DsdStructure
 ): Promise<DsdResult> {
+  // The editable structure drives the document: which chapters exist, who
+  // writes them, and the critic lenses. On the built-in default these are
+  // identical to the old hard-coded constants, so output is unchanged.
+  const WRITER_GROUPS = structure.groups
+  const CRITIC_LENSES = structure.critics
+  const ALL_CHAPTERS = flatChapters(structure.groups)
+  const chapterIds = new Set(ALL_CHAPTERS.map((c) => c.id))
+
   const [writers, critics, lead] = await Promise.all([
     Promise.all(WRITER_GROUPS.map((g) => getAgent(g.agentId))),
     Promise.all(CRITIC_LENSES.map((c) => getAgent(c.agentId))),
@@ -319,7 +331,7 @@ async function runTeamDsd(
   // Guarantee the Runtime Process Flow from the modelled process sequences:
   // render it deterministically and lock it so the overloaded functional
   // writer can't drop it. Respect an analyst-provided runtime chapter.
-  if (!(provided["runtime-flow"] && provided["runtime-flow"].trim())) {
+  if (chapterIds.has("runtime-flow") && !(provided["runtime-flow"] && provided["runtime-flow"].trim())) {
     const rf = renderRuntimeProcessFlow(solution)
     if (rf) provided["runtime-flow"] = rf
   }
@@ -330,6 +342,7 @@ async function runTeamDsd(
   // each FR also cites its source detail (rule/process + the BRD passage).
   // Respect an analyst-provided FR chapter.
   if (
+    chapterIds.has("functional-requirements") &&
     isIncluded("functional-requirements") &&
     !(provided["functional-requirements"] && provided["functional-requirements"].trim())
   ) {
@@ -391,7 +404,7 @@ async function runTeamDsd(
   const verdicts = await Promise.all(
     CRITIC_LENSES.map((c, i) =>
       llm
-        .complete({ prompt: criticLensPrompt(c, facts, assembled1, agentInstruction(critics[i]), lockedTitles), maxTokens: 1200 })
+        .complete({ prompt: criticLensPrompt(c, facts, assembled1, agentInstruction(critics[i]), lockedTitles, WRITER_GROUPS), maxTokens: 1200 })
         .then((r: string) => parseVerdict(r))
         .catch(() => ({ ok: true, issues: [] as { section: string; problem: string }[] }))
     )
@@ -399,7 +412,7 @@ async function runTeamDsd(
   const issuesByGroup = new Map<string, { section: string; problem: string }[]>()
   for (const v of verdicts) {
     for (const iss of v.issues) {
-      const gid = mapIssueToGroup(iss.section)
+      const gid = mapIssueToGroup(iss.section, WRITER_GROUPS)
       if (!gid) continue
       const arr = issuesByGroup.get(gid) || []
       arr.push(iss)
@@ -435,7 +448,7 @@ async function runTeamDsd(
   // 4. Deterministic assembly. Lead polish runs only when nothing is locked,
   //    so locked chapters are guaranteed verbatim.
   setPhase(id, "consolidating", { iterations })
-  const assembled = assembleDoc(solution, sections, includedTitles)
+  const assembled = assembleDoc(solution, sections, includedTitles, WRITER_GROUPS)
   let markdown = assembled
   if (!hasLocks) {
     try {
@@ -542,20 +555,20 @@ async function gatherExemplars(solutionId: string): Promise<Map<string, string>>
 
 // Resolve a critic's issue tag to a writer group id (it may return the
 // group id directly, or a chapter title).
-function mapIssueToGroup(section: string | undefined): string | undefined {
+function mapIssueToGroup(section: string | undefined, groups: WriterGroup[]): string | undefined {
   if (!section) return undefined
   const s = section.trim().toLowerCase()
-  const byId = WRITER_GROUPS.find((g) => g.agentId.toLowerCase() === s)
+  const byId = groups.find((g) => g.agentId.toLowerCase() === s)
   if (byId) return byId.agentId
-  const byChapter = WRITER_GROUPS.find((g) =>
+  const byChapter = groups.find((g) =>
     g.chapters.some((c) => s.includes(c.title.toLowerCase()) || c.title.toLowerCase().includes(s))
   )
   return byChapter?.agentId
 }
 
-function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[]): string {
+function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[], groups: WriterGroup[]): string {
   const toc = ["1. Document History", ...includedTitles].map((t) => `- ${t}`).join("\n")
-  const ordered = WRITER_GROUPS.map((g) => sections.find((s) => s.id === g.agentId)?.body || "").filter(Boolean)
+  const ordered = groups.map((g) => sections.find((s) => s.id === g.agentId)?.body || "").filter(Boolean)
   return [
     `# ${solution.name} — Detailed Solution Description`,
     ``,
@@ -1213,8 +1226,8 @@ ${facts}
 Output only the Markdown for your chapters.`
 }
 
-function criticLensPrompt(lens: CriticLens, facts: string, draft: string, instruction: string, lockedTitles: string[] = []): string {
-  const groups = WRITER_GROUPS.map((g) => `- ${g.agentId}: ${g.chapters.map((c) => c.title).join("; ")}`).join("\n")
+function criticLensPrompt(lens: CriticLens, facts: string, draft: string, instruction: string, lockedTitles: string[], groupList: WriterGroup[]): string {
+  const groups = groupList.map((g) => `- ${g.agentId}: ${g.chapters.map((c) => c.title).join("; ")}`).join("\n")
   const locked = lockedTitles.length
     ? `\nThese chapters are analyst-provided and FIXED — do NOT flag them, they will not be changed: ${lockedTitles.join("; ")}.\n`
     : ""
