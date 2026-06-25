@@ -7,6 +7,14 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.1] — 2026-06-25
+
+### Changed
+
+- **The DSD Output editor now lives under Settings** instead of the top
+  navigation. A "DSD Output" card on the Settings page links into the
+  editor; the standalone `/dsd-structure` page is unchanged.
+
 ## [0.39.0] — 2026-06-25
 
 ### Added

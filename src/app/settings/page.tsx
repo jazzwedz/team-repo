@@ -14,6 +14,8 @@ import {
   HeartPulse,
   FolderPlus,
   AlertTriangle,
+  ListTree,
+  ChevronRight,
 } from "lucide-react"
 import {
   BLOCK_METAS,
@@ -293,6 +295,30 @@ export default function SettingsPage() {
           </p>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ListTree className="h-4 w-4 text-muted-foreground" />
+            DSD Output
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Link
+            href="/dsd-structure"
+            className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/40 transition-colors"
+          >
+            <ListTree className="h-5 w-5 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Edit the DSD output structure</div>
+              <div className="text-xs text-muted-foreground">
+                Chapters, titles and guidance the generated DSD must contain — add, remove, reorder or move chapters between writers.
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
