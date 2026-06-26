@@ -28,6 +28,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# UI-saved application settings (secrets) — never commit, never to the data repo
+/app-config.local.json
+
 # vercel
 .vercel
 

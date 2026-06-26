@@ -7,6 +7,33 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-06-26
+
+### Added
+
+- **Settings is now tabbed, with editable Application Settings.** Settings
+  has four clickable tabs — **Health Checks**, **DSD Output**, **UI
+  Configuration**, and **Application Settings** — the last of which makes
+  everything that used to live only in `.env.local` editable from the UI
+  (Git backend, LLM gateway, Confluence, source code, data-model registry,
+  logging, …).
+  - **Backwards compatible:** the effective value is *what you save in the
+    UI, otherwise your environment* (`saved ?? process.env`). Existing
+    `.env.local` values keep working untouched until you override them;
+    fresh installs can configure entirely through the UI.
+  - **Local & private:** saved values go to a gitignored
+    `app-config.local.json` (same trust as `.env.local`) — never committed
+    and never written to the data repo. At startup (and after each save)
+    they're overlaid onto `process.env`, so every existing reader honours an
+    override with no code change.
+  - **Secrets** are masked, never sent to the browser, and follow a "leave
+    blank = keep current" model, with a *Clear* action to drop an override.
+    `SITE_PASSWORD` is shown but stays environment-managed (the auth gate
+    reads it in Edge middleware).
+  - **Vault-ready:** persistence sits behind a small backend seam so secrets
+    can later move to a vault without touching the readers.
+  - New API: `GET/PUT /api/app-config`.
+
 ## [0.39.2] — 2026-06-25
 
 ### Changed

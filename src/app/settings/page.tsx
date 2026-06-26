@@ -23,6 +23,15 @@ import {
   type UIBlocksConfig,
 } from "@/lib/ui-blocks"
 import { useUIConfig } from "@/components/UIConfigProvider"
+import { ApplicationSettings } from "@/components/ApplicationSettings"
+
+type SettingsTab = "health" | "dsd" | "ui" | "app"
+const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
+  { id: "health", label: "Health Checks" },
+  { id: "dsd", label: "DSD Output" },
+  { id: "ui", label: "UI Configuration" },
+  { id: "app", label: "Application Settings" },
+]
 
 const TAB_LABELS: Record<DetailTabId, string> = {
   overview: "Overview",
@@ -129,6 +138,7 @@ const HEALTH_LABELS: Record<HealthKind, string> = {
 
 export default function SettingsPage() {
   const { blocks, loaded, refresh } = useUIConfig()
+  const [tab, setTab] = useState<SettingsTab>("health")
   const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -291,11 +301,36 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Hide blocks on the component detail page. Applies to every component for everyone in the team. Saved in <code className="font-mono text-xs">config.yaml</code> in the data repo.
+            Connection health, the DSD output structure, what the component detail page shows, and the application configuration.
           </p>
         </div>
       </div>
 
+      {/* Tab nav */}
+      <div className="border-b">
+        <nav className="-mb-px flex gap-1 flex-wrap" role="tablist">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {tab === "app" && <ApplicationSettings />}
+
+      {tab === "dsd" && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -319,7 +354,9 @@ export default function SettingsPage() {
           </Link>
         </CardContent>
       </Card>
+      )}
 
+      {tab === "health" && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -430,7 +467,13 @@ export default function SettingsPage() {
           })}
         </CardContent>
       </Card>
+      )}
 
+      {tab === "ui" && (
+      <>
+      <p className="text-sm text-muted-foreground">
+        Hide blocks on the component detail page. Applies to every component for everyone in the team. Saved in <code className="font-mono text-xs">config.yaml</code> in the data repo.
+      </p>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => setAll(true)}>
           Show all
@@ -499,6 +542,8 @@ export default function SettingsPage() {
         )}
         {error && <span className="text-sm text-destructive">{error}</span>}
       </div>
+      </>
+      )}
     </div>
   )
 }
