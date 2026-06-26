@@ -3,7 +3,7 @@ import localFont from "next/font/local"
 import "./globals.css"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
-import { Layers, FileText, FileImage, Settings, Shield, Workflow, Boxes, Compass, Bot } from "lucide-react"
+import { Layers, FileImage, Settings, Shield, Workflow, Boxes, Compass, Bot } from "lucide-react"
 import { ClientErrorReporter } from "@/components/ClientErrorReporter"
 import { Providers } from "@/components/Providers"
 
@@ -77,13 +77,6 @@ export default function RootLayout({
               >
                 <FileImage className="h-3.5 w-3.5" />
                 Diagrams
-              </Link>
-              <Link
-                href="/generate"
-                className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Generate
               </Link>
               <Link
                 href="/agents"

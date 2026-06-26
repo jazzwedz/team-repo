@@ -7,6 +7,14 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.2] — 2026-06-25
+
+### Changed
+
+- **Hid the "Generate" link in the top navigation.** The link is removed
+  from the nav only — the `/generate` route is untouched and still
+  reachable directly.
+
 ## [0.39.1] — 2026-06-25
 
 ### Changed
