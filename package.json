@@ -1,17 +1,17 @@
 {
   "name": "arch-tool",
-  "version": "0.40.0",
+  "version": "0.40.1",
   "private": true,
   "description": "Team Repository — AI-powered architecture catalog for a single team. Components, capabilities, data flows, business rules and bidirectional Confluence sync, kept as YAML in a Git repo.",
   "license": "MIT",
   "author": "Peter Jasenovec",
-  "homepage": "https://github.com/jazzwedz/arch-tool",
+  "homepage": "https://github.com/jazzwedz/team-repo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jazzwedz/arch-tool.git"
+    "url": "https://github.com/jazzwedz/team-repo.git"
   },
   "bugs": {
-    "url": "https://github.com/jazzwedz/arch-tool/issues"
+    "url": "https://github.com/jazzwedz/team-repo/issues"
   },
   "keywords": [
     "architecture",

@@ -145,7 +145,7 @@ Model name can also live in `config.yaml` at the root of your data repo (overrid
 
 ```yaml
 llm:
-  model: claude-sonnet-4-20250514   # or gpt-4o, etc.
+  model: claude-sonnet-5   # or gpt-4o, etc.
 ```
 
 ### Optional — Confluence integration

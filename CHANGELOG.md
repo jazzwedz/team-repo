@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.1] — 2026-09-02
+
+### Fixed
+
+- **AI features failed on any install that relied on the default Anthropic
+  model.** The built-in default was `claude-sonnet-4-20250514`, which
+  Anthropic **retired on 15 June 2026** — every request to it now fails, so
+  AI features broke wherever no explicit model was configured (`llm.model`
+  in `config.yaml` or `ANTHROPIC_MODEL`). The default is now the current
+  `claude-sonnet-5`. Stale model examples in `.env.local.example`, the
+  README and the Application Settings placeholder were refreshed too.
+
+
 ## [0.40.0] — 2026-06-26
 
 ### Added

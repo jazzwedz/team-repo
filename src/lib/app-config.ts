@@ -68,7 +68,7 @@ export const CONFIG_FIELDS: ConfigField[] = [
   // --- LLM gateway ---
   { key: "LLM_PROVIDER", group: "LLM gateway", label: "Provider", type: "select", options: ["anthropic", "openai-compatible"], help: "Defaults to anthropic." },
   { key: "ANTHROPIC_API_KEY", group: "LLM gateway", label: "Anthropic API key", type: "password", secret: true },
-  { key: "ANTHROPIC_MODEL", group: "LLM gateway", label: "Anthropic model", type: "text", placeholder: "claude-sonnet-4-20250514" },
+  { key: "ANTHROPIC_MODEL", group: "LLM gateway", label: "Anthropic model", type: "text", placeholder: "claude-sonnet-5" },
   { key: "LLM_BASE_URL", group: "LLM gateway", label: "Gateway base URL", type: "text", placeholder: "https://your-gateway/v1", help: "openai-compatible gateway; the adapter calls {base}/chat/completions." },
   { key: "LLM_MODEL", group: "LLM gateway", label: "Model", type: "text", placeholder: "gpt-4o" },
   { key: "LLM_API_KEY", group: "LLM gateway", label: "Static API key", type: "password", secret: true, help: "Static bearer mode. Ignored when an OAuth token URL is set." },
