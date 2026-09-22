@@ -33,6 +33,7 @@ import {
 import { getDocStructure } from "./dsd-structure-store"
 import { leadIdFor, docLabel, docShort } from "./doc-sections"
 import type { DocKind } from "./doc-kinds"
+import { fsSeeds, renderFsSeedFacts, ruleDetail, generateUseCasesChapter } from "./fs-usecases"
 
 // ----------------------------- job store -----------------------------
 
@@ -155,7 +156,8 @@ async function runDsd(
   provided: Record<string, string> = {},
   options: DsdOptions = {}
 ): Promise<void> {
-  let facts = buildGroundedFacts(solution, components)
+  const kind: DocKind = options.kind ?? "dsd"
+  let facts = buildGroundedFacts(solution, components, kind)
   // Append the attached source requirements (BRD) as additional grounding.
   if (options.sourceDoc?.text?.trim()) {
     facts += "\n" + sourceContextBlock(options.sourceDoc)
@@ -204,11 +206,10 @@ async function runDsd(
   const directives = buildDirectives(options)
   // The output structure (chapters + writers + critics) is analyst-editable;
   // load the active one (built-in default until they save edits).
-  const kind: DocKind = options.kind ?? "dsd"
   const structure = await getDocStructure(kind)
   const result = mode === "team"
-    ? await runTeamDsd(id, solution, facts, llm, provided, options, directives, structure, kind)
-    : await runQuickDsd(id, solution, facts, llm, directives, kind)
+    ? await runTeamDsd(id, solution, components, facts, llm, provided, options, directives, structure, kind)
+    : await runQuickDsd(id, solution, facts, llm, directives, structure, kind)
 
   // Persist the artifact to the DSD library (best-effort: even if the
   // save fails the markdown is still returned so the user sees it).
@@ -274,9 +275,9 @@ function buildDirectives(o: DsdOptions): string {
 
 // ----- quick mode: single writer → critic → revise (built-in prompts) -----
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runQuickDsd(id: string, solution: Solution, facts: string, llm: any, directives: string, kind: DocKind): Promise<DsdResult> {
+async function runQuickDsd(id: string, solution: Solution, facts: string, llm: any, directives: string, structure: DsdStructure, kind: DocKind): Promise<DsdResult> {
   setPhase(id, "drafting")
-  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, undefined, directives, kind), maxTokens: 4096 })
+  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, structure, undefined, directives, kind), maxTokens: 4096 })
   let iterations = 0
   for (let i = 0; i < 2; i++) {
     setPhase(id, "reviewing", { iterations })
@@ -295,6 +296,7 @@ async function runQuickDsd(id: string, solution: Solution, facts: string, llm: a
 async function runTeamDsd(
   id: string,
   solution: Solution,
+  components: Component[],
   facts: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   llm: any,
@@ -364,6 +366,23 @@ async function runTeamDsd(
           err: e instanceof Error ? e.message : String(e),
         })
       }
+    }
+  }
+
+  // FS: generate the Use Cases chapter in bounded chunks from the modelled
+  // processes — the writer produces each use-case table, rules table and
+  // UI note; the process flow is rendered deterministically and spliced
+  // in — and lock it, so every modelled process becomes a use case.
+  // Respect an analyst-provided chapter.
+  if (chapterIds.has("use-cases") && isIncluded("use-cases") && !(provided["use-cases"] && provided["use-cases"].trim())) {
+    const uwi = WRITER_GROUPS.findIndex((g) => g.chapters.some((c) => c.id === "use-cases"))
+    try {
+      const uc = await generateUseCasesChapter(solution, components, facts, inst(writers[uwi >= 0 ? uwi : 0]), llm)
+      if (uc) provided["use-cases"] = uc
+    } catch (e) {
+      getLogger().warn("FS chunked use-case generation failed; falling back to the section writer", {
+        err: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 
@@ -455,7 +474,7 @@ async function runTeamDsd(
   // 4. Deterministic assembly. Lead polish runs only when nothing is locked,
   //    so locked chapters are guaranteed verbatim.
   setPhase(id, "consolidating", { iterations })
-  const assembled = assembleDoc(solution, sections, includedTitles, WRITER_GROUPS, kind)
+  const assembled = assembleDoc(solution, sections, includedTitles, WRITER_GROUPS, kind, options.sourceDoc?.name)
   let markdown = assembled
   if (!hasLocks) {
     try {
@@ -573,8 +592,61 @@ function mapIssueToGroup(section: string | undefined, groups: WriterGroup[]): st
   return byChapter?.agentId
 }
 
-function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[], groups: WriterGroup[], kind: DocKind): string {
-  const toc = ["1. Document History", ...includedTitles].map((t) => `- ${t}`).join("\n")
+// Chapter 1 is deterministic and differs per document kind: the DSD keeps
+// its Document History table; the FS gets the document-control block a
+// functional specification opens with (modifications, referred documents,
+// people involved, sign-off) — with the sign-off rows present but empty,
+// so there is a place for the approvals the document asks for.
+function documentControlTitle(kind: DocKind): string {
+  return kind === "fs" ? "1. Document Control" : "1. Document History"
+}
+
+function documentControlChapter(kind: DocKind, solution: Solution, sourceDocName?: string): string {
+  const today = new Date().toISOString().slice(0, 10)
+  if (kind !== "fs") {
+    return [
+      `## 1. Document History`,
+      `| Version | Date | Changes applied | Author(s) | Contributor(s) |`,
+      `|---------|------|-----------------|-----------|----------------|`,
+      `| 1.0 | ${today} | Initial version | Analyst (Team Repository) | AI agent team |`,
+    ].join("\n")
+  }
+  const referred = sourceDocName
+    ? `| 1 | ${sourceDocName} (source requirements document) | — | — |`
+    : `| 1 | Source requirements document — to be linked | — | — |`
+  return [
+    `## 1. Document Control`,
+    `**Modifications**`,
+    ``,
+    `| Version | Date | Author | Description |`,
+    `|---------|------|--------|-------------|`,
+    `| 1.0 | ${today} | Analyst (Team Repository) | Initial version — generated with the AI agent team |`,
+    ``,
+    `**Referred documents**`,
+    ``,
+    `| N° | Document | Version | Date |`,
+    `|----|----------|---------|------|`,
+    referred,
+    ``,
+    `**People involved**`,
+    ``,
+    `| Name | Department | Role |`,
+    `|------|------------|------|`,
+    `| ${solution.owner || "—"} | — | Solution owner |`,
+    ``,
+    `**Sign-off** — the commitments in this document must be reviewed, agreed and signed off by all affected groups.`,
+    ``,
+    `| Role | Name | Date | Signature |`,
+    `|------|------|------|-----------|`,
+    `| Business owner | | | |`,
+    `| Solution architect | | | |`,
+    `| Development lead | | | |`,
+    `| Test lead | | | |`,
+  ].join("\n")
+}
+
+function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[], groups: WriterGroup[], kind: DocKind, sourceDocName?: string): string {
+  const toc = [documentControlTitle(kind), ...includedTitles].map((t) => `- ${t}`).join("\n")
   const ordered = groups.map((g) => sections.find((s) => s.id === g.agentId)?.body || "").filter(Boolean)
   return [
     `# ${solution.name} — ${docLabel(kind)}`,
@@ -582,10 +654,7 @@ function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles:
     `## Table of Contents`,
     toc,
     ``,
-    `## 1. Document History`,
-    `| Version | Date | Changes applied | Author(s) | Contributor(s) |`,
-    `|---------|------|-----------------|-----------|----------------|`,
-    `| 1.0 | ${new Date().toISOString().slice(0, 10)} | Initial version | Analyst (Team Repository) | AI agent team |`,
+    documentControlChapter(kind, solution, sourceDocName),
     ``,
     ordered.join("\n\n"),
   ].join("\n")
@@ -602,7 +671,7 @@ function isPolishSafe(polished: string, assembled: string, includedTitles: strin
 
 const DC_ORDER = ["public", "internal", "confidential", "restricted"]
 
-export function buildGroundedFacts(solution: Solution, components: Component[]): string {
+export function buildGroundedFacts(solution: Solution, components: Component[], kind: DocKind = "dsd"): string {
   const byId = new Map(components.map((c) => [c.id, c]))
   const members = solution.members || []
   const memberIds = new Set(members.map((m) => m.component))
@@ -751,7 +820,7 @@ export function buildGroundedFacts(solution: Solution, components: Component[]):
   for (const m of members) {
     const c = byId.get(m.component)
     for (const r of c?.rules || []) {
-      ruleLines.push(`- [${c?.name}] ${r.name} (${r.kind})${r.summary ? ` — ${r.summary}` : ""}`)
+      ruleLines.push(`- [${c?.name}] ${r.name} (${r.kind})${r.summary ? ` — ${r.summary}` : ""}${ruleDetail(r)}`)
     }
   }
   if (ruleLines.length) {
@@ -773,30 +842,36 @@ export function buildGroundedFacts(solution: Solution, components: Component[]):
   }
   const pad = (n: number) => String(n).padStart(2, "0")
   const sortedMembers = [...members].sort((a, b) => a.component.localeCompare(b.component))
-  const frSeeds: string[] = []
-  let frN = 0
-  for (const m of sortedMembers) {
-    const c = byId.get(m.component)
-    const rs = [...(c?.rules || [])].sort((a, b) => (a.name || "").localeCompare(b.name || ""))
-    for (const r of rs) {
-      frN += 1
-      const asIs = m.disposition === "extend" ? " [has AS-IS behaviour — describe AS-IS vs TO-BE]" : ""
-      frSeeds.push(
-        `- FR-${pad(frN)} ← [${c?.name || m.component}] ${r.name} (${r.kind})${r.summary ? ` — ${r.summary}` : ""} [status: ${statusFor(c?.status, m.disposition)}]${asIs}`
-      )
+  if (kind === "fs") {
+    // The FS is organised around use cases and management rules, not FRs:
+    // stable UC-NN / RG-NN seeds instead (see fs-usecases.ts).
+    lines.push(...renderFsSeedFacts(fsSeeds(solution, components)))
+  } else {
+    const frSeeds: string[] = []
+    let frN = 0
+    for (const m of sortedMembers) {
+      const c = byId.get(m.component)
+      const rs = [...(c?.rules || [])].sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      for (const r of rs) {
+        frN += 1
+        const asIs = m.disposition === "extend" ? " [has AS-IS behaviour — describe AS-IS vs TO-BE]" : ""
+        frSeeds.push(
+          `- FR-${pad(frN)} ← [${c?.name || m.component}] ${r.name} (${r.kind})${r.summary ? ` — ${r.summary}` : ""} [status: ${statusFor(c?.status, m.disposition)}]${asIs}`
+        )
+      }
     }
-  }
-  for (const p of processes) {
-    frN += 1
-    frSeeds.push(`- FR-${pad(frN)} ← Process "${p.name}"${p.goal ? ` — ${p.goal}` : ""}`)
-  }
-  if (frSeeds.length) {
-    lines.push(`## Functional requirement seeds — assign these EXACT ids (FR-NN) and keep them stable across regenerations`)
-    lines.push(...frSeeds)
-    lines.push(
-      `Requirements you derive from the source BRD or source code take the next free numbers (FR-${pad(frN + 1)}, …). For formula/calculation rules, include a short worked example as an input → output table.`
-    )
-    lines.push("")
+    for (const p of processes) {
+      frN += 1
+      frSeeds.push(`- FR-${pad(frN)} ← Process "${p.name}"${p.goal ? ` — ${p.goal}` : ""}`)
+    }
+    if (frSeeds.length) {
+      lines.push(`## Functional requirement seeds — assign these EXACT ids (FR-NN) and keep them stable across regenerations`)
+      lines.push(...frSeeds)
+      lines.push(
+        `Requirements you derive from the source BRD or source code take the next free numbers (FR-${pad(frN + 1)}, …). For formula/calculation rules, include a short worked example as an input → output table.`
+      )
+      lines.push("")
+    }
   }
 
   const nfrSeeds: string[] = []
@@ -826,7 +901,11 @@ export function buildGroundedFacts(solution: Solution, components: Component[]):
   }
 
   // Diagram
-  lines.push(`## Architecture diagram (use this mermaid block verbatim in the architecture section)`)
+  lines.push(
+    kind === "fs"
+      ? `## Architecture diagram (use this mermaid block verbatim as the system-context figure in the appendix)`
+      : `## Architecture diagram (use this mermaid block verbatim in the architecture section)`
+  )
   lines.push("```mermaid")
   lines.push(buildSolutionMermaid(members, components, flows))
   lines.push("```")
@@ -1026,70 +1105,39 @@ async function gatherDataModelEvidence(solution: Solution, components: Component
 
 const STYLE = `Write like a knowledgeable colleague — clear, direct, no fluff. Short sentences. No marketing words (leverage, robust, seamless, synergy, holistic, empower, streamline). State facts plainly.`
 
-function draftPrompt(solution: Solution, facts: string, instruction?: string, directives?: string, kind: DocKind = "dsd"): string {
+function draftPrompt(
+  solution: Solution,
+  facts: string,
+  structure: DsdStructure,
+  instruction?: string,
+  directives?: string,
+  kind: DocKind = "dsd"
+): string {
   const base =
     instruction ||
     `You are a solution architect writing a ${docLabel(kind)} (${docShort(kind)}) in Markdown. ${STYLE}`
   const lead = directives ? `${base}\n\n${directives}` : base
+  // The same editable chapter structure the team mode uses (Settings →
+  // Document Output), so quick mode produces the same document shape.
+  const chapters = flatChapters(structure.groups)
+    .map((c) => `## ${c.title}\n${c.guidance}`)
+    .join("\n\n")
   return `${lead}
 
 Base the document STRICTLY on the verified facts below. Do not introduce components, flows, capabilities or values that are not in the facts. Where you reason beyond the data (e.g. sequencing the roadmap), say so plainly.
 
 ${facts}
 
-Produce the ${docShort(kind)} with these chapters, in order:
+Produce the ${docShort(kind)} with these chapters, in order. Chapter 1 is given — copy it verbatim. For every other chapter the text under its heading is the guidance for what it must contain (do not copy the guidance itself).
 
 # ${solution.name} — ${docLabel(kind)}
 
 ## Table of Contents
 (numbered list of the chapters below)
 
-## 1. Document History
-| Version | Date | Changes applied | Author(s) | Contributor(s) |
-|---------|------|-----------------|-----------|----------------|
-| 1.0 | [today's date] | Initial version | Analyst (Team Repository) | AI agent |
+${documentControlChapter(kind, solution)}
 
-## 2. Document Purpose
-Who it is for (developers, testers, reviewers/audit), what the system does and does not do, and a short note on the source requirements and data model it aligns to (or "to be linked").
-
-## 3. Solution Context
-Upstream (what feeds it), Downstream (what consumes it), and Responsibility Boundaries (what it is and is NOT responsible for) — from the members, flows and dependencies.
-
-## 4. Scope
-In scope: the member components. Out of scope: anything not listed.
-
-## 5. Solution Architecture
-The component inventory table (from the facts) and 2-3 sentences on how the pieces fit. Then include the architecture mermaid block from the facts verbatim.
-
-## 6. Capability Mapping
-The mapping from the facts. Call out any GAP that needs a new component.
-
-## 7. Requirements & Traceability Matrix
-A table: FR id | Satisfies (capability/process/BRD section) | Status. Use the EXACT FR ids and statuses from the requirement seeds in the facts.
-
-## 8. Functional Requirements
-Use the FR seeds in the facts (exact FR-NN ids, kept stable). One-line statement + behaviour/steps/constraints + the given status. Describe AS-IS vs TO-BE where a seed is flagged. For formula/calculation rules add a short input → output worked example. Do not invent beyond the facts.
-
-## 9. Runtime Process Flow
-The end-to-end flow as numbered steps from the process sequences and flows (or "No runtime flow modelled yet.").
-
-## 10. Data Structures
-Column tables (Field | Type | Description | Example) for data entities the facts support (or note schema will be added once the data model/source is linked).
-
-## 11. Non-Functional Requirements
-NFRs by category. Use the EXACT NFR-NN ids from the requirement seeds in the facts, plus the NFR targets and highest data classification.
-
-## 12. Business Rules
-The business rules from the facts (or "none captured yet").
-
-## 13. Risks & Assumptions
-The risks from the facts plus any explicit assumptions you make.
-
-## 14. Implementation Roadmap
-Group the work by disposition: reuse as-is, extend, new to build. Note readiness (which members are still draft).
-
-## 15. Appendix & References
-Referenced documents, data models and external specs from the facts (or "No external references linked yet.").
+${chapters}
 
 Output only the Markdown document.`
 }
@@ -1103,7 +1151,7 @@ function criticPrompt(facts: string, draft: string, instruction?: string, kind: 
 Flag an issue when the draft:
 - mentions a component, flow, capability or value that is NOT in the facts (invention),
 - contradicts the facts,
-- omits a required chapter (1-11),
+- omits a required chapter,
 - states an NFR / risk / rule that the facts do not support.
 
 VERIFIED FACTS:
@@ -1271,7 +1319,7 @@ function reviseSectionPrompt(
     : ""
   return `${instruction}
 
-Revise ONLY these chapters to fix the listed issues: ${chapters}. Keep everything correct; change only what the issues require. Stay strictly within the verified facts. Output each chapter with its exact "## N. Title" heading and nothing else. ${STYLE}
+Revise ONLY these chapters of the ${docShort(kind)} to fix the listed issues: ${chapters}. Keep everything correct; change only what the issues require. Stay strictly within the verified facts. Output each chapter with its exact "## N. Title" heading and nothing else. ${STYLE}
 ${locked}
 ISSUES TO FIX:
 ${issueList}

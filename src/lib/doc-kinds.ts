@@ -50,7 +50,7 @@ export const DOC_KINDS: Record<DocKind, DocKindDef> = {
     artifactDir: "fs",
     coachStateFile: "agents/_coach-state-fs.yaml",
     description:
-      "Business-facing functional specification — what the solution must do, for whom, under which rules, and how it is verified.",
+      "Functional requirements specification in the use-case format — document control, introduction & scope, numbered use cases with process flows and management-rules tables, the rules register, data, interfaces, NFRs, acceptance criteria and an open-points register.",
   },
 }
 

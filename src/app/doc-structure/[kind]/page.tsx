@@ -208,7 +208,7 @@ export default function DocStructurePage() {
         <span>
           Edit each chapter&apos;s <strong>title</strong> and <strong>guidance</strong> (what the writer must produce), reorder or
           delete chapters, or move a chapter to a different writer. The document is generated the same way — this only fine-tunes
-          the output definition. <strong>Document History</strong> (chapter 1) is always added automatically. Changes apply to the
+          the output definition. <strong>{kind === "fs" ? "Document Control" : "Document History"}</strong> (chapter 1) is always added automatically. Changes apply to the
           next generation.
         </span>
       </div>

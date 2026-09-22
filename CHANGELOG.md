@@ -7,6 +7,58 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.42.0] — 2026-09-22
+
+### Added
+
+- **FS — the Functional Specification format.** The FS document kind now
+  has its real structure, modelled on functional requirements analysis
+  documents as analysts and developers know them, with the gaps such
+  documents typically leave fixed:
+  - **1. Document Control** (deterministic): modifications table, referred
+    documents (the attached source document, or "to be linked"), people
+    involved, and a sign-off table with the roles present but empty.
+  - **2. Introduction** (overview of the demand, objective & summary,
+    business overview of the change as feature → carrying component),
+    **3. Scope** (explicit in / out / constraints — an item never in both
+    lists), **4. Actors, Stakeholders & Glossary**.
+  - **5. Use Cases** — one per modelled process with a stable `UC-NN` id:
+    the use-case table (principal actor, components involved, description,
+    trigger, numbered pre-/post-conditions, status), the **process flow**
+    (numbered steps + sequence diagram, rendered deterministically from the
+    modelled sequence), the per-use-case **management rules** table
+    (`RG-NN`) and a user-interface & messages note. Generated in bounded
+    chunks so every process is guaranteed to appear; rules no use case
+    exercises land in a "General management rules" table.
+  - **6. Management Rules & Calculations** — the single authoritative
+    statement of every `RG-NN` (kind, owning component, applies-in, formula
+    with worked example or Given/When/Then, status, AS-IS vs TO-BE), **7.
+    Data Requirements** (business objects + field mapping), **8.
+    Interfaces, Batches & Notifications** (interface table, batches,
+    notifications, print & reports).
+  - **9. NFRs**, **10. Acceptance Criteria** (`AC-NN`, Given/When/Then per
+    use case and per behaviour-changing rule — never a one-line "all
+    tested"), **11. Assumptions, Decisions & Open Points** (an open-points
+    register for every value business still has to supply and every
+    option left undecided), **12. Appendix & References**.
+  - FS facts carry stable **use-case seeds** (`UC-NN` ← processes) and
+    **management-rule seeds** (`RG-NN` ← member rules, with the use cases
+    they apply in) instead of the DSD's FR seeds; the FS critic lenses look
+    for empty template sections, options left open, rules stated twice and
+    id drift. New `src/lib/fs-usecases.ts`.
+  - The chapter list, titles and guidance remain editable in Settings →
+    Document Output → FS (an FS structure saved before this release keeps
+    its own chapters until reset).
+
+### Changed
+
+- **Rule details in the facts.** The "Business rules" facts block now
+  carries each rule's formula or Given/When/Then (bounded), so both DSD
+  and FS writers can quote the expression instead of only the summary.
+- **Quick mode follows the editable structure.** The quick-mode draft
+  prompt is built from the same chapter structure as team mode (it was a
+  fixed DSD chapter list), so a quick FS produces FS chapters.
+
 ## [0.41.1] — 2026-09-22
 
 ### Fixed
