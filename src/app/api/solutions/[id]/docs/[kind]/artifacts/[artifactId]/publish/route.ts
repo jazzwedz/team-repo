@@ -1,13 +1,14 @@
-// POST /api/solutions/[id]/dsd/artifacts/[artifactId]/publish
+// POST /api/solutions/[id]/docs/[kind]/artifacts/[artifactId]/publish
 //
-// One-way publish of a generated DSD to Confluence. The analyst picks a
-// parent page (the "sub-directory") in the publish dialog; we render the
-// DSD markdown to storage XHTML, create or update the page under that
-// parent, and remember the page + parent on the artifact so the next
+// One-way publish of a generated document (dsd, fs, …) to Confluence. The
+// analyst picks a parent page (the "sub-directory") in the publish dialog;
+// we render the markdown to storage XHTML, create or update the page under
+// that parent, and remember the page + parent on the artifact so the next
 // publish updates the same page and pre-selects the parent.
 
 import { NextResponse } from "next/server"
 import { getDsd, setDsdConfluence, type DsdArtifact } from "@/lib/dsd-store"
+import { isDocKind, DOC_KINDS, type DocKind } from "@/lib/doc-kinds"
 import { isValidName } from "@/lib/validate"
 import { withRouteContext } from "@/lib/route-context"
 import { getLogger } from "@/lib/log"
@@ -26,35 +27,36 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 120
 
 interface PublishImage {
-  /** diagram-N.png, matching the document order of the mermaid blocks. */
+  /** diagram-N.svg, matching the document order of the mermaid blocks. */
   filename: string
-  /** base64-encoded PNG bytes (no data: prefix). */
+  /** base64-encoded bytes (no data: prefix). */
   base64: string
 }
 
 interface PublishBody {
   parentId: string
   parentTitle?: string
-  /** Pre-rendered diagram PNGs (rendered client-side); attached to the page
-   *  and referenced from the storage as <ac:image>. */
+  /** Pre-rendered diagram images (rendered client-side); attached to the
+   *  page and referenced from the storage as <ac:image>. */
   images?: PublishImage[]
 }
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string; artifactId: string }> }
+  { params }: { params: Promise<{ id: string; kind: string; artifactId: string }> }
 ) {
   return withRouteContext(request, async () => {
-    const { id, artifactId } = await params
+    const { id, kind, artifactId } = await params
     if (!isValidName(id)) {
       return NextResponse.json({ error: "Invalid solution id" }, { status: 400 })
     }
+    if (!isDocKind(kind)) {
+      return NextResponse.json({ error: "Unknown document kind" }, { status: 404 })
+    }
+    const short = DOC_KINDS[kind].short
     if (!isConfluenceConfigured()) {
       return NextResponse.json(
-        {
-          error:
-            "Confluence is not configured. Set the CONFLUENCE_* env vars first.",
-        },
+        { error: "Confluence is not configured. Set the CONFLUENCE_* env vars first." },
         { status: 503 }
       )
     }
@@ -67,29 +69,23 @@ export async function POST(
     }
     const parentId = (body.parentId || "").trim()
     if (!parentId) {
-      return NextResponse.json(
-        { error: "Pick a parent page to publish under." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "Pick a parent page to publish under." }, { status: 400 })
     }
 
     let artifact
     try {
-      artifact = await getDsd(id, artifactId)
+      artifact = await getDsd(id, artifactId, kind)
     } catch {
-      return NextResponse.json({ error: "DSD not found" }, { status: 404 })
+      return NextResponse.json({ error: `${short} not found` }, { status: 404 })
     }
     if (!artifact.markdown || !artifact.markdown.trim()) {
-      return NextResponse.json(
-        { error: "This DSD is empty — nothing to publish." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: `This ${short} is empty — nothing to publish.` }, { status: 400 })
     }
 
     try {
       const images = Array.isArray(body.images) ? body.images : []
       const imageFiles = new Set(images.map((im) => im.filename))
-      const storageBody = await buildDsdPageBody(artifact, imageFiles)
+      const storageBody = await buildPageBody(artifact, kind, imageFiles)
       const existingPageId = artifact.confluence?.pageId
 
       let pageRef
@@ -104,17 +100,16 @@ export async function POST(
             storageBody,
             currentVersion: current.version.number,
             parentId,
-            message: `synced from arch-tool: DSD ${id}/${artifactId}`,
+            message: `synced from arch-tool: ${short} ${id}/${artifactId}`,
           })
           action = "updated"
         } catch (err) {
           // Page deleted in Confluence — fall through to a fresh create.
-          getLogger().warn(
-            `DSD Confluence page ${existingPageId} not accessible, recreating`,
-            { err: err instanceof Error ? err.message : String(err) }
-          )
+          getLogger().warn(`${short} Confluence page ${existingPageId} not accessible, recreating`, {
+            err: err instanceof Error ? err.message : String(err),
+          })
           pageRef = await createPage({
-            title: await uniqueTitle(artifact.title || `DSD — ${id}`, artifactId),
+            title: await uniqueTitle(artifact.title || `${short} — ${id}`, artifactId, short),
             storageBody,
             parentId,
           })
@@ -122,26 +117,24 @@ export async function POST(
         }
       } else {
         pageRef = await createPage({
-          title: await uniqueTitle(artifact.title || `DSD — ${id}`, artifactId),
+          title: await uniqueTitle(artifact.title || `${short} — ${id}`, artifactId, short),
           storageBody,
           parentId,
         })
         action = "created"
       }
 
-      // Upload the rendered diagram PNGs as page attachments so the
+      // Upload the rendered diagram images as page attachments so the
       // <ac:image> refs resolve (best-effort: a failed image must not fail
       // the whole publish — the page text is already there).
       let uploaded = 0
       for (const im of images) {
         try {
-          const contentType = im.filename.toLowerCase().endsWith(".svg")
-            ? "image/svg+xml"
-            : "image/png"
+          const contentType = im.filename.toLowerCase().endsWith(".svg") ? "image/svg+xml" : "image/png"
           await uploadAttachment(pageRef.id, im.filename, contentType, Buffer.from(im.base64, "base64"))
           uploaded += 1
         } catch (e) {
-          getLogger().warn("DSD diagram attachment upload failed", {
+          getLogger().warn(`${short} diagram attachment upload failed`, {
             id,
             artifactId,
             filename: im.filename,
@@ -150,18 +143,23 @@ export async function POST(
         }
       }
       if (images.length) {
-        getLogger().info("DSD diagrams attached", { id, artifactId, uploaded, total: images.length })
+        getLogger().info(`${short} diagrams attached`, { id, artifactId, uploaded, total: images.length })
       }
 
-      await setDsdConfluence(id, artifactId, {
-        pageId: pageRef.id,
-        pageUrl: pageRef.fullUrl,
-        parentId,
-        parentTitle: body.parentTitle,
-        spaceId: pageRef.spaceId,
-        version: pageRef.version.number,
-        publishedAt: new Date().toISOString(),
-      })
+      await setDsdConfluence(
+        id,
+        artifactId,
+        {
+          pageId: pageRef.id,
+          pageUrl: pageRef.fullUrl,
+          parentId,
+          parentTitle: body.parentTitle,
+          spaceId: pageRef.spaceId,
+          version: pageRef.version.number,
+          publishedAt: new Date().toISOString(),
+        },
+        kind
+      )
 
       return NextResponse.json({
         action,
@@ -174,15 +172,9 @@ export async function POST(
       })
     } catch (error: unknown) {
       const status =
-        error && typeof error === "object" && "status" in error
-          ? (error as { status: number }).status
-          : 500
+        error && typeof error === "object" && "status" in error ? (error as { status: number }).status : 500
       const message = error instanceof Error ? error.message : "Unknown error"
-      getLogger().error("Failed to publish DSD to Confluence", {
-        id,
-        artifactId,
-        err: message,
-      })
+      getLogger().error(`Failed to publish ${short} to Confluence`, { id, artifactId, err: message })
       return NextResponse.json(
         { error: `Failed to publish: ${message}` },
         { status: status >= 400 && status < 600 ? status : 500 }
@@ -194,8 +186,8 @@ export async function POST(
 // Confluence page titles must be unique within a space. On a first
 // publish, if the chosen title already exists (a different page), append a
 // short discriminator derived from the artifact id.
-async function uniqueTitle(base: string, artifactId: string): Promise<string> {
-  const title = base.trim() || "DSD"
+async function uniqueTitle(base: string, artifactId: string, fallback: string): Promise<string> {
+  const title = base.trim() || fallback
   try {
     const existing = await findPageByTitleInSpace(title)
     if (!existing) return title
@@ -206,7 +198,7 @@ async function uniqueTitle(base: string, artifactId: string): Promise<string> {
   return `${title} (${short})`
 }
 
-async function buildDsdPageBody(artifact: DsdArtifact, mermaidImageFiles?: Set<string>): Promise<string> {
+async function buildPageBody(artifact: DsdArtifact, kind: DocKind, mermaidImageFiles?: Set<string>): Promise<string> {
   // Make clear this is analyst-authored work via Team Repository (a person
   // in the loop using AI assistance), not an autonomous bot output. No
   // link back to the tool: it runs locally inside the corp network, so a
@@ -219,7 +211,7 @@ async function buildDsdPageBody(artifact: DsdArtifact, mermaidImageFiles?: Set<s
     `</ac:rich-text-body>` +
     `</ac:structured-macro>`
   const narrative = await markdownToStorage(artifact.markdown, { mermaidImageFiles })
-  const footer = `<hr/><p style="color:#9ca3af;font-size:11px;">Team Repository · DSD ${escapeXml(artifact.solutionId)}</p>`
+  const footer = `<hr/><p style="color:#9ca3af;font-size:11px;">Team Repository · ${DOC_KINDS[kind].short} ${escapeXml(artifact.solutionId)}</p>`
   return [header, narrative, footer].join("\n")
 }
 
@@ -230,9 +222,7 @@ function buildCredit(artifact: DsdArtifact): string {
   if (artifact.mode === "team") bits.push("Agent-team mode")
   else if (artifact.mode === "quick") bits.push("Quick mode")
 
-  const agents = Object.entries(artifact.agentVersions || {}).map(
-    ([id, v]) => `${id} v${v}`
-  )
+  const agents = Object.entries(artifact.agentVersions || {}).map(([id, v]) => `${id} v${v}`)
   if (agents.length > 0) bits.push(`AI contributors: ${agents.join(", ")}`)
   if (artifact.model) bits.push(artifact.model)
   bits.push(`published ${new Date().toISOString().slice(0, 10)}`)

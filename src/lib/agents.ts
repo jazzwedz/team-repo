@@ -15,12 +15,8 @@
 import yaml from "js-yaml"
 import { getGit } from "./git"
 import { getLogger } from "./log"
-import {
-  WRITER_GROUPS,
-  CRITIC_LENSES,
-  LEAD_AGENT_ID,
-  COACH_AGENT_ID,
-} from "./dsd-sections"
+import { DOC_KINDS, DOC_KIND_IDS, type DocKind } from "./doc-kinds"
+import { defaultStructureFor, leadIdFor, coachIdFor, docLabel, docShort } from "./doc-sections"
 
 export type AgentRole = "writer" | "critic" | "coach" | "lead" | "assistant"
 
@@ -111,46 +107,50 @@ const STYLE =
 
 const DEFAULTS: Record<string, Agent> = {}
 
-// Writer per section group.
-for (const g of WRITER_GROUPS) {
-  DEFAULTS[g.agentId] = {
-    id: g.agentId,
-    name: g.name,
-    role: "writer",
-    temperature: 0.4,
-    version: 1,
-    system_prompt: `You are a solution architect writing the part of a Detailed Solution Description focused on ${g.focus}. ${STYLE}`,
+// One trainable team per document kind: a writer per section group, a
+// critic per lens, a lead and a coach. Ids are prefixed by the kind
+// (dsd-writer-…, fs-writer-…) so the Agents page and the coach can tell
+// the teams apart.
+for (const kind of DOC_KIND_IDS) {
+  const { groups, critics } = defaultStructureFor(kind)
+  const label = docLabel(kind)
+  const short = docShort(kind)
+  for (const g of groups) {
+    DEFAULTS[g.agentId] = {
+      id: g.agentId,
+      name: g.name,
+      role: "writer",
+      temperature: 0.4,
+      version: 1,
+      system_prompt: `You are a solution architect writing the part of a ${label} focused on ${g.focus}. ${STYLE}`,
+    }
   }
-}
-
-// Critic per lens.
-for (const c of CRITIC_LENSES) {
-  DEFAULTS[c.agentId] = {
-    id: c.agentId,
-    name: c.name,
-    role: "critic",
-    temperature: 0.2,
-    version: 1,
-    system_prompt: `You are a strict reviewer of a Detailed Solution Description draft. Your lens: ${c.focus} Find ONLY real problems through this lens; do not restate problems outside it. Be specific about where and how to fix.`,
+  for (const c of critics) {
+    DEFAULTS[c.agentId] = {
+      id: c.agentId,
+      name: c.name,
+      role: "critic",
+      temperature: 0.2,
+      version: 1,
+      system_prompt: `You are a strict reviewer of a ${label} draft. Your lens: ${c.focus} Find ONLY real problems through this lens; do not restate problems outside it. Be specific about where and how to fix.`,
+    }
   }
-}
-
-DEFAULTS[LEAD_AGENT_ID] = {
-  id: LEAD_AGENT_ID,
-  name: "Lead editor",
-  role: "lead",
-  temperature: 0.3,
-  version: 1,
-  system_prompt: `You are the lead editor assembling a Detailed Solution Description from sections written by specialist writers. Stitch the sections into one coherent document: consistent terminology, no duplication across sections, smooth transitions. Fix only flow and consistency — do not add facts, and keep every section's content. ${STYLE}`,
-}
-
-DEFAULTS[COACH_AGENT_ID] = {
-  id: COACH_AGENT_ID,
-  name: "DSD Coach",
-  role: "coach",
-  temperature: 0.3,
-  version: 1,
-  system_prompt: `You are a coach who improves the DSD agent team — section writers, critic lenses and the lead editor — by refining their instructions. You are given each agent's current prompt plus recent analyst feedback (ratings, comments, corrections), tagged with the section it is about. Map section feedback to the agent that owns that section, and whole-document feedback to the lead or the relevant critics. Identify recurring problems and propose concrete, minimal improvements to the right agents' system prompts and "lessons". Do not rewrite prompts wholesale; suggest targeted additions grounded in the evidence.`,
+  DEFAULTS[leadIdFor(kind)] = {
+    id: leadIdFor(kind),
+    name: "Lead editor",
+    role: "lead",
+    temperature: 0.3,
+    version: 1,
+    system_prompt: `You are the lead editor assembling a ${label} from sections written by specialist writers. Stitch the sections into one coherent document: consistent terminology, no duplication across sections, smooth transitions. Fix only flow and consistency — do not add facts, and keep every section's content. ${STYLE}`,
+  }
+  DEFAULTS[coachIdFor(kind)] = {
+    id: coachIdFor(kind),
+    name: `${short} Coach`,
+    role: "coach",
+    temperature: 0.3,
+    version: 1,
+    system_prompt: `You are a coach who improves the ${short} agent team — section writers, critic lenses and the lead editor — by refining their instructions. You are given each agent's current prompt plus recent analyst feedback (ratings, comments, corrections), tagged with the section it is about. Map section feedback to the agent that owns that section, and whole-document feedback to the lead or the relevant critics. Identify recurring problems and propose concrete, minimal improvements to the right agents' system prompts and "lessons". Do not rewrite prompts wholesale; suggest targeted additions grounded in the evidence.`,
+  }
 }
 
 for (const a of ASSISTANT_AGENTS) {
@@ -238,11 +238,13 @@ export function agentInstruction(a: Agent): string {
 // A single timestamp: feedback at or before it has already been used by a
 // training round, so the coach only ever considers strictly newer feedback.
 
-const COACH_STATE_PATH = "agents/_coach-state.yaml"
+function coachStatePath(kind: DocKind): string {
+  return DOC_KINDS[kind].coachStateFile
+}
 
-export async function getCoachWatermark(): Promise<string> {
+export async function getCoachWatermark(kind: DocKind = "dsd"): Promise<string> {
   try {
-    const file = await getGit().getFile(COACH_STATE_PATH)
+    const file = await getGit().getFile(coachStatePath(kind))
     const o = yaml.load(file.content, { schema: yaml.JSON_SCHEMA }) as { lastTrainedAt?: string } | null
     return typeof o?.lastTrainedAt === "string" ? o.lastTrainedAt : ""
   } catch {
@@ -250,18 +252,18 @@ export async function getCoachWatermark(): Promise<string> {
   }
 }
 
-export async function setCoachWatermark(at: string): Promise<void> {
+export async function setCoachWatermark(at: string, kind: DocKind = "dsd"): Promise<void> {
   const git = getGit()
   let sha: string | undefined
   try {
-    sha = (await git.getFile(COACH_STATE_PATH)).sha
+    sha = (await git.getFile(coachStatePath(kind))).sha
   } catch {
     // file doesn't exist yet
   }
   await git.putFile(
-    COACH_STATE_PATH,
+    coachStatePath(kind),
     yaml.dump({ lastTrainedAt: at }, { lineWidth: -1 }),
-    "chore(agents): advance coach training watermark",
+    `chore(agents): advance ${kind} coach training watermark`,
     sha
   )
 }

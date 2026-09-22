@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Loader2, ExternalLink, AlertCircle, Check } from "lucide-react"
 import { renderDsdDiagramImages } from "@/lib/mermaid-to-png"
+import { DOC_KINDS, type DocKind } from "@/lib/doc-kinds"
 
 interface PageNode {
   id: string
@@ -80,6 +81,7 @@ export function DsdPublishDialog({
   open,
   onOpenChange,
   solutionId,
+  kind = "dsd",
   artifactId,
   currentParentId,
   currentPageUrl,
@@ -88,6 +90,8 @@ export function DsdPublishDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   solutionId: string
+  /** Document kind of the artifact (default dsd). */
+  kind?: DocKind
   artifactId: string
   currentParentId?: string | null
   currentPageUrl?: string
@@ -136,7 +140,7 @@ export function DsdPublishDialog({
       try {
         setStatusMsg("Rendering diagrams…")
         const ar = await fetch(
-          `/api/solutions/${encodeURIComponent(solutionId)}/dsd/artifacts/${encodeURIComponent(artifactId)}`
+          `/api/solutions/${encodeURIComponent(solutionId)}/docs/${kind}/artifacts/${encodeURIComponent(artifactId)}`
         ).then((res) => res.json()).catch(() => null)
         if (ar?.markdown) images = await renderDsdDiagramImages(ar.markdown)
       } catch {
@@ -145,7 +149,7 @@ export function DsdPublishDialog({
       setStatusMsg("Publishing…")
       const parentTitle = pages.find((p) => p.id === parentId)?.title
       const r = await fetch(
-        `/api/solutions/${encodeURIComponent(solutionId)}/dsd/artifacts/${encodeURIComponent(artifactId)}/publish`,
+        `/api/solutions/${encodeURIComponent(solutionId)}/docs/${kind}/artifacts/${encodeURIComponent(artifactId)}/publish`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -180,10 +184,10 @@ export function DsdPublishDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Publish DSD to Confluence</DialogTitle>
+          <DialogTitle>Publish {DOC_KINDS[kind].short} to Confluence</DialogTitle>
           <DialogDescription>
-            Pick the parent page to publish this DSD under. The choice is
-            remembered for this DSD; re-publishing updates the same page.
+            Pick the parent page to publish this {DOC_KINDS[kind].short} under. The choice is
+            remembered for this {DOC_KINDS[kind].short}; re-publishing updates the same page.
           </DialogDescription>
         </DialogHeader>
 

@@ -14,7 +14,8 @@ import { ArrowLeft, Boxes, Loader2, AlertCircle, Pencil, Trash2, Info, UploadClo
 import { MermaidPreview } from "@/components/mermaid-preview"
 import { GeneratedDocModal } from "@/components/GeneratedDocModal"
 import { GenerateDsdModal, type DsdGenerateOptions } from "@/components/GenerateDsdModal"
-import { ALL_CHAPTERS } from "@/lib/dsd-sections"
+import { allChaptersFor } from "@/lib/doc-sections"
+import { DOC_KINDS, DOC_KIND_IDS, type DocKind } from "@/lib/doc-kinds"
 import { DsdProgressModal } from "@/components/DsdProgressModal"
 import { DsdPublishDialog } from "@/components/DsdPublishDialog"
 import { EnrichDialog } from "@/components/EnrichDialog"
@@ -69,6 +70,8 @@ export default function SolutionDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<TabId>("overview")
+  // Which generated-document kind the Documentation tab is showing (DSD, FS, …).
+  const [docKind, setDocKind] = useState<DocKind>("dsd")
   const [reload, setReload] = useState(0)
 
   // DSD generation + flow promotion state
@@ -143,10 +146,10 @@ export default function SolutionDetailPage() {
     setGenPhaseKey("grounding")
     setGenIterations(0)
     try {
-      const start = await fetch(`/api/solutions/${encodeURIComponent(id)}/dsd`, {
+      const start = await fetch(`/api/solutions/${encodeURIComponent(id)}/docs/${docKind}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(opts),
+        body: JSON.stringify({ ...opts, kind: docKind }),
       })
       const sj = await start.json().catch(() => null)
       if (!start.ok || !sj?.jobId) throw new Error((sj && sj.error) || `Failed to start (${start.status})`)
@@ -154,7 +157,7 @@ export default function SolutionDetailPage() {
 
       for (let i = 0; i < 160; i++) {
         await new Promise((r) => setTimeout(r, 1500))
-        const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/dsd?jobId=${encodeURIComponent(jobId)}`)
+        const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/docs/${docKind}?jobId=${encodeURIComponent(jobId)}`)
         const j = await r.json().catch(() => null)
         if (!r.ok || !j) throw new Error((j && j.error) || `Status check failed (${r.status})`)
         setGenPhase(PHASE_LABEL[j.phase] || j.phase)
@@ -180,7 +183,7 @@ export default function SolutionDetailPage() {
 
   const loadArtifacts = async () => {
     try {
-      const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/dsd/artifacts`)
+      const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts`)
       const d = await r.json().catch(() => null)
       setArtifacts(Array.isArray(d) ? d : [])
     } catch {
@@ -191,7 +194,7 @@ export default function SolutionDetailPage() {
   const openArtifact = async (artifactId: string) => {
     try {
       const r = await fetch(
-        `/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(artifactId)}`
+        `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(artifactId)}`
       )
       const d = await r.json().catch(() => null)
       if (!r.ok || !d) throw new Error((d && d.error) || "Failed to open")
@@ -199,7 +202,7 @@ export default function SolutionDetailPage() {
       setCurrentArtifactId(artifactId)
       setShowDocModal(true)
     } catch (e) {
-      setGenError(e instanceof Error ? e.message : "Failed to open DSD")
+      setGenError(e instanceof Error ? e.message : `Failed to open ${DOC_KINDS[docKind].short}`)
     }
   }
 
@@ -211,7 +214,7 @@ export default function SolutionDetailPage() {
     }
     try {
       const r = await fetch(
-        `/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(artifactId)}`,
+        `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(artifactId)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -222,21 +225,21 @@ export default function SolutionDetailPage() {
       setRenamingId(null)
       loadArtifacts()
     } catch (e) {
-      setGenError(e instanceof Error ? e.message : "Failed to rename DSD")
+      setGenError(e instanceof Error ? e.message : `Failed to rename ${DOC_KINDS[docKind].short}`)
     }
   }
 
   const deleteArtifact = async (artifactId: string) => {
-    if (!confirm("Delete this DSD? This cannot be undone.")) return
+    if (!confirm(`Delete this ${DOC_KINDS[docKind].short}? This cannot be undone.`)) return
     try {
       const r = await fetch(
-        `/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(artifactId)}`,
+        `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(artifactId)}`,
         { method: "DELETE" }
       )
       if (!r.ok) throw new Error("Failed to delete")
       loadArtifacts()
     } catch (e) {
-      setGenError(e instanceof Error ? e.message : "Failed to delete DSD")
+      setGenError(e instanceof Error ? e.message : `Failed to delete ${DOC_KINDS[docKind].short}`)
     }
   }
 
@@ -249,7 +252,7 @@ export default function SolutionDetailPage() {
     if (!currentArtifactId) return "No saved document to rate."
     try {
       const r = await fetch(
-        `/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(currentArtifactId)}/feedback`,
+        `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(currentArtifactId)}/feedback`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -271,12 +274,12 @@ export default function SolutionDetailPage() {
     let locked: Record<string, string> = {}
     if (latest) {
       try {
-        const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(latest.id)}`)
+        const r = await fetch(`/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(latest.id)}`)
         const d = await r.json().catch(() => null)
         if (r.ok && d?.markdown) {
           const chapters = parseChaptersFromMd(d.markdown as string)
           for (const cid of latest.lockedChapters || []) {
-            const ch = ALL_CHAPTERS.find((c) => c.id === cid)
+            const ch = allChaptersFor(docKind).find((c) => c.id === cid)
             const text = ch && chapters.get(normChapterTitle(ch.title))
             if (text) locked[cid] = text
           }
@@ -291,7 +294,14 @@ export default function SolutionDetailPage() {
 
   // Load the DSD library when the solution loads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadArtifacts() }, [id])
+  useEffect(() => { loadArtifacts() }, [id, docKind])
+  // Switching kind shows a different library — drop anything from the previous one.
+  useEffect(() => {
+    setGenerated(null)
+    setCurrentArtifactId(null)
+    setLatestLocked({})
+    setGenError(null)
+  }, [docKind])
 
   const promoteFlows = async () => {
     if (!solution) return
@@ -660,9 +670,26 @@ export default function SolutionDetailPage() {
       {tab === "documentation" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="text-sm text-muted-foreground">
-              Generate a Detailed Solution Description (DSD) — mode, locked chapters, depth &
-              audience are set in the next step.
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex gap-0.5 rounded-md border p-0.5" role="tablist" aria-label="Document kind">
+                {DOC_KIND_IDS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    aria-selected={docKind === k}
+                    onClick={() => setDocKind(k)}
+                    disabled={generating}
+                    title={DOC_KINDS[k].label}
+                    className={`px-2.5 py-1 rounded text-xs font-medium ${docKind === k ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  >
+                    {DOC_KINDS[k].short}
+                  </button>
+                ))}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Generate a {DOC_KINDS[docKind].label} ({DOC_KINDS[docKind].short}) — mode, locked chapters and options are set in the next step.
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -681,7 +708,7 @@ export default function SolutionDetailPage() {
                     {genPhase || "Generating…"}
                   </>
                 ) : (
-                  "Generate DSD"
+                  `Generate ${DOC_KINDS[docKind].short}`
                 )}
               </Button>
             </div>
@@ -696,9 +723,9 @@ export default function SolutionDetailPage() {
 
           {/* DSD library */}
           <div>
-            <h3 className="text-sm font-semibold mb-2">Generated DSDs ({artifacts.length})</h3>
+            <h3 className="text-sm font-semibold mb-2">Generated {DOC_KINDS[docKind].short}s ({artifacts.length})</h3>
             {artifacts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No DSDs yet — generate one above.</p>
+              <p className="text-sm text-muted-foreground">No {DOC_KINDS[docKind].short}s yet — generate one above.</p>
             ) : (
               <div className="space-y-2">
                 {artifacts.map((a) => {
@@ -726,13 +753,13 @@ export default function SolutionDetailPage() {
                           <button
                             type="button"
                             className="inline-flex items-center gap-1 text-sm font-medium hover:underline"
-                            title="Rename this DSD"
+                            title={`Rename this ${DOC_KINDS[docKind].short}`}
                             onClick={() => {
                               setRenamingId(a.id)
-                              setRenameVal(a.title || "DSD")
+                              setRenameVal(a.title || DOC_KINDS[docKind].short)
                             }}
                           >
-                            {a.title || "DSD"}
+                            {a.title || DOC_KINDS[docKind].short}
                             <Pencil className="h-3 w-3 text-muted-foreground" />
                           </button>
                         )}
@@ -778,7 +805,7 @@ export default function SolutionDetailPage() {
         open={showDocModal}
         onOpenChange={setShowDocModal}
         title={artifacts.find((a) => a.id === currentArtifactId)?.title || solution.name}
-        badge="Detailed Solution Description"
+        badge={DOC_KINDS[docKind].label}
         markdown={generated || ""}
         feedback={
           currentArtifactId
@@ -797,7 +824,7 @@ export default function SolutionDetailPage() {
             ? {
                 onSave: async (md: string) => {
                   const r = await fetch(
-                    `/api/solutions/${encodeURIComponent(id)}/dsd/artifacts/${encodeURIComponent(currentArtifactId)}`,
+                    `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(currentArtifactId)}`,
                     {
                       method: "PUT",
                       headers: { "Content-Type": "application/json" },
@@ -815,6 +842,7 @@ export default function SolutionDetailPage() {
       />
 
       <DsdProgressModal
+        docShort={DOC_KINDS[docKind].short}
         open={generating && genMode === "team"}
         phase={genPhaseKey}
         iterations={genIterations}
@@ -822,6 +850,7 @@ export default function SolutionDetailPage() {
       />
 
       <GenerateDsdModal
+        kind={docKind}
         open={genModalOpen}
         onOpenChange={setGenModalOpen}
         solutionId={id}
@@ -839,6 +868,7 @@ export default function SolutionDetailPage() {
 
       {publishArtifact && (
         <DsdPublishDialog
+          kind={docKind}
           open={!!publishArtifact}
           onOpenChange={(o) => { if (!o) setPublishArtifact(null) }}
           solutionId={id}

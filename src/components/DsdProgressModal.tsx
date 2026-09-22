@@ -26,7 +26,7 @@ const FRIENDLY: Record<string, string> = {
   reviewing: "The critic panel is reviewing the draft from every angle…",
   revising: "Writers are resolving what the critics flagged…",
   consolidating: "The lead editor is stitching it into one document…",
-  saving: "Filing it into your DSD library…",
+  saving: "Filing it into your document library…",
   done: "Document delivered.",
 }
 
@@ -35,11 +35,14 @@ export function DsdProgressModal({
   phase,
   iterations,
   lockedCount = 0,
+  docShort = "DSD",
 }: {
   open: boolean
   phase: Phase
   iterations?: number
   lockedCount?: number
+  /** Short label of the document kind being generated. */
+  docShort?: string
 }) {
   const o = ORDER[phase] ?? 0
   const writersActive = phase === "drafting" || phase === "revising"
@@ -49,7 +52,7 @@ export function DsdProgressModal({
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="max-w-2xl top-16 translate-y-0 [&>button:last-child]:hidden">
         <DialogHeader>
-          <DialogTitle>Your AI team is writing the DSD</DialogTitle>
+          <DialogTitle>Your AI team is writing the {docShort}</DialogTitle>
         </DialogHeader>
 
         <div className="mt-4 flex items-center justify-between gap-1 overflow-x-auto pb-1">

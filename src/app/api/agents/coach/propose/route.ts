@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server"
 import { proposeCoaching } from "@/lib/dsd-coach"
+import { isDocKind } from "@/lib/doc-kinds"
 import { isLLMConfigured, LLM_DISABLED_MESSAGE } from "@/lib/llm"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { withRouteContext } from "@/lib/route-context"
@@ -24,8 +25,10 @@ export async function POST(request: Request) {
         { status: 429 }
       )
     }
+    const body = await request.json().catch(() => null)
+    const kind = body && isDocKind(body.kind) ? body.kind : "dsd"
     try {
-      const proposal = await proposeCoaching()
+      const proposal = await proposeCoaching(kind)
       return NextResponse.json(proposal)
     } catch (error) {
       getLogger().error("Coach propose failed", {

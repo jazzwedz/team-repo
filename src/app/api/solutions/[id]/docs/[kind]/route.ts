@@ -1,7 +1,9 @@
-// DSD generation job endpoint.
+// Document generation job endpoint — one implementation for every document
+// kind (dsd, fs, …); `kind` selects the chapter structure, the agent team
+// and the artifact library.
 //
-//   POST /api/solutions/[id]/dsd        → start a job, returns { jobId }
-//   GET  /api/solutions/[id]/dsd?jobId= → poll { status, phase, markdown? }
+//   POST /api/solutions/[id]/docs/[kind]        → start a job, returns { jobId }
+//   GET  /api/solutions/[id]/docs/[kind]?jobId= → poll { status, phase, markdown? }
 //
 // The generation is a multi-call orchestration (draft → critic → revise)
 // run as a detached in-process job so it survives the gateway's request
@@ -15,6 +17,7 @@ import { isLLMConfigured, LLM_DISABLED_MESSAGE } from "@/lib/llm"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { startDsdJob, getDsdJob, type DsdOptions } from "@/lib/solution-dsd"
 import { getCombinedSourceText } from "@/lib/source-docs-store"
+import { isDocKind, DOC_KINDS } from "@/lib/doc-kinds"
 import { withRouteContext } from "@/lib/route-context"
 import { getLogger } from "@/lib/log"
 
@@ -23,12 +26,15 @@ export const maxDuration = 300
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; kind: string }> }
 ) {
   return withRouteContext(request, async () => {
-    const { id } = await params
+    const { id, kind } = await params
     if (!isValidName(id)) {
       return NextResponse.json({ error: "Invalid solution id" }, { status: 400 })
+    }
+    if (!isDocKind(kind)) {
+      return NextResponse.json({ error: "Unknown document kind" }, { status: 404 })
     }
     if (!isLLMConfigured()) {
       return NextResponse.json({ error: LLM_DISABLED_MESSAGE }, { status: 503 })
@@ -40,10 +46,11 @@ export async function POST(
         { status: 429 }
       )
     }
+    const short = DOC_KINDS[kind].short
     // Agent team is the default; quick is opt-in via the body.
     let mode: "quick" | "team" = "team"
     let provided: Record<string, string> = {}
-    const options: DsdOptions = {}
+    const options: DsdOptions = { kind }
     try {
       const body = await request.json().catch(() => null)
       if (body && body.mode === "quick") mode = "quick"
@@ -98,12 +105,12 @@ export async function POST(
       const jobId = startDsdJob(solution, components, mode, provided, options)
       return NextResponse.json({ jobId })
     } catch (error) {
-      getLogger().error("Failed to start DSD job", {
+      getLogger().error(`Failed to start ${short} job`, {
         id,
         err: error instanceof Error ? error.message : "Unknown error",
       })
       return NextResponse.json(
-        { error: `Failed to start DSD: ${error instanceof Error ? error.message : "Unknown error"}` },
+        { error: `Failed to start ${short}: ${error instanceof Error ? error.message : "Unknown error"}` },
         { status: 500 }
       )
     }
@@ -112,12 +119,15 @@ export async function POST(
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string; kind: string }> }
 ) {
   return withRouteContext(request, async () => {
-    const { id } = await params
+    const { id, kind } = await params
     if (!isValidName(id)) {
       return NextResponse.json({ error: "Invalid solution id" }, { status: 400 })
+    }
+    if (!isDocKind(kind)) {
+      return NextResponse.json({ error: "Unknown document kind" }, { status: 404 })
     }
     const jobId = new URL(request.url).searchParams.get("jobId")
     if (!jobId) {

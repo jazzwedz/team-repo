@@ -7,6 +7,39 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.41.1] — 2026-09-22
+
+### Fixed
+
+- **“AI assist failed (502)” when composing a solution.** AI compose sends
+  the whole catalog to the model in one request, which can outlive the
+  time a reverse proxy keeps an HTTP request open. It now runs as a
+  detached background job (the same pattern DSD generation uses): the POST
+  returns a job id immediately and the composer polls until the result is
+  ready. New shared `src/lib/ai-jobs.ts` for long AI calls.
+
+## [0.41.0] — 2026-09-22
+
+### Added
+
+- **Document kinds — groundwork for the FS (Functional Specification).**
+  Everything that was hard-wired to “DSD” now works per *document kind*:
+  the editable chapter structure, the trainable agent team (writers /
+  critics / lead / coach), grounded generation, the artifact library with
+  feedback, and Confluence publishing. `dsd` behaves exactly as before.
+  - New **FS** kind with a placeholder default structure (4 writers, 13
+    chapters, 4 critics) and its own agent team (`fs-*`), to be refined once
+    the expected FS format is defined — editable in Settings → **Document
+    Output → FS**, no code change needed.
+  - Solution page: a **DSD | FS** switcher on the Documentation tab; each
+    kind has its own library. Agents page: an **FS team** tab with its own
+    “Retrain” coach.
+  - Generic routes replace the DSD-only ones: `/api/solutions/[id]/docs/[kind]/…`
+    and `/api/doc-structure/[kind]`; the editor lives at `/doc-structure/[kind]`
+    (`/dsd-structure` redirects). Artifacts are stored per kind
+    (`dsd/…`, `fs/…`), structures in `dsd-structure.yaml` / `fs-structure.yaml`.
+
+
 ## [0.40.3] — 2026-09-22
 
 ### Fixed

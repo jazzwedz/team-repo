@@ -1,12 +1,17 @@
-// DSD artifact store — generated Detailed Solution Descriptions are
-// persisted to the data repo as markdown files with a YAML front-matter
-// metadata block, under dsd/<solutionId>/<artifactId>.md. Each is one
+// Generated-document artifact store (DSD, FS, …). Artifacts are persisted
+// to the data repo as markdown files with a YAML front-matter metadata
+// block, under <kind dir>/<solutionId>/<artifactId>.md (see DOC_KINDS).
+// Every function takes the document `kind` last and defaults to "dsd" so
+// existing DSD call sites are unchanged. Each is one
 // commit, so the DSD library is versioned and auditable like everything
 // else in arch-tool. Routed through the same GitProvider (getGit).
 
 import yaml from "js-yaml"
 import { getGit, GitNotFoundError } from "./git"
 import { getLogger } from "./log"
+import { DOC_KINDS, type DocKind } from "./doc-kinds"
+
+export type { DocKind }
 
 export type DsdMode = "quick" | "team"
 
@@ -54,6 +59,8 @@ export interface DsdConfluenceLink {
 
 export interface DsdArtifactMeta {
   id: string
+  /** Document kind this artifact belongs to (absent on older DSD files). */
+  kind?: DocKind
   solutionId: string
   title: string
   mode: DsdMode
@@ -83,11 +90,14 @@ export interface DsdArtifact extends DsdArtifactMeta {
 
 const SAFE_ARTIFACT_ID = /^[A-Za-z0-9_-]+$/
 
-function dirFor(solutionId: string): string {
-  return `dsd/${solutionId}/`
+function dirFor(solutionId: string, kind: DocKind): string {
+  return `${DOC_KINDS[kind].artifactDir}/${solutionId}/`
 }
-function pathFor(solutionId: string, artifactId: string): string {
-  return `dsd/${solutionId}/${artifactId}.md`
+function pathFor(solutionId: string, artifactId: string, kind: DocKind): string {
+  return `${DOC_KINDS[kind].artifactDir}/${solutionId}/${artifactId}.md`
+}
+function shortOf(kind: DocKind): string {
+  return DOC_KINDS[kind].short
 }
 
 /** Filesystem-safe, sortable artifact id from the current time. */
@@ -113,11 +123,11 @@ function parse(content: string): { meta: Partial<DsdArtifactMeta>; markdown: str
 }
 
 /** List artifact metadata for a solution (newest first), without bodies. */
-export async function listDsd(solutionId: string): Promise<DsdArtifactMeta[]> {
+export async function listDsd(solutionId: string, kind: DocKind = "dsd"): Promise<DsdArtifactMeta[]> {
   const git = getGit()
   let entries: { path: string; sha: string }[]
   try {
-    entries = await git.listTree(dirFor(solutionId))
+    entries = await git.listTree(dirFor(solutionId, kind))
   } catch {
     return []
   }
@@ -129,7 +139,7 @@ export async function listDsd(solutionId: string): Promise<DsdArtifactMeta[]> {
         const { meta } = parse(content)
         return meta.id ? (meta as DsdArtifactMeta) : null
       } catch (err) {
-        getLogger().error(`Failed to read DSD ${f.path}`, {
+        getLogger().error(`Failed to read ${shortOf(kind)} ${f.path}`, {
           err: err instanceof Error ? err.message : String(err),
         })
         return null
@@ -141,21 +151,21 @@ export async function listDsd(solutionId: string): Promise<DsdArtifactMeta[]> {
   )
 }
 
-export async function getDsd(solutionId: string, artifactId: string): Promise<DsdArtifact> {
+export async function getDsd(solutionId: string, artifactId: string, kind: DocKind = "dsd"): Promise<DsdArtifact> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   const { meta, markdown } = parse(file.content)
   return { ...(meta as DsdArtifactMeta), markdown, sha: file.sha }
 }
 
-export async function saveDsd(meta: DsdArtifactMeta, markdown: string): Promise<void> {
+export async function saveDsd(meta: DsdArtifactMeta, markdown: string, kind: DocKind = "dsd"): Promise<void> {
   const git = getGit()
-  const content = serialize(meta, markdown)
+  const content = serialize({ ...meta, kind }, markdown)
   await git.putFile(
-    pathFor(meta.solutionId, meta.id),
+    pathFor(meta.solutionId, meta.id, kind),
     content,
-    `docs: add DSD ${meta.id} for ${meta.solutionId}`
+    `docs: add ${shortOf(kind)} ${meta.id} for ${meta.solutionId}`
   )
 }
 
@@ -188,20 +198,21 @@ function regenerateToc(markdown: string): string {
 export async function renameDsd(
   solutionId: string,
   artifactId: string,
-  title: string
+  title: string,
+  kind: DocKind = "dsd"
 ): Promise<void> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const trimmed = title.trim()
   if (!trimmed) throw new Error("Title cannot be empty")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   const { meta, markdown } = parse(file.content)
   const m = meta as DsdArtifactMeta
   m.title = trimmed
   await git.putFile(
-    pathFor(solutionId, artifactId),
+    pathFor(solutionId, artifactId, kind),
     serialize(m, markdown),
-    `docs: rename DSD ${artifactId} to "${trimmed}"`,
+    `docs: rename ${shortOf(kind)} ${artifactId} to "${trimmed}"`,
     file.sha
   )
 }
@@ -212,32 +223,33 @@ export async function updateDsdMarkdown(
   solutionId: string,
   artifactId: string,
   markdown: string,
-  by?: string
+  by?: string,
+  kind: DocKind = "dsd"
 ): Promise<void> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   const { meta } = parse(file.content)
   const m = meta as DsdArtifactMeta
   m.edited = true
   m.editedAt = new Date().toISOString()
   const nextMarkdown = regenerateToc(markdown.trim())
   await git.putFile(
-    pathFor(solutionId, artifactId),
+    pathFor(solutionId, artifactId, kind),
     serialize(m, nextMarkdown),
-    `docs: edit DSD ${artifactId} for ${solutionId}${by ? ` (${by})` : ""}`,
+    `docs: edit ${shortOf(kind)} ${artifactId} for ${solutionId}${by ? ` (${by})` : ""}`,
     file.sha
   )
 }
 
-export async function deleteDsd(solutionId: string, artifactId: string): Promise<void> {
+export async function deleteDsd(solutionId: string, artifactId: string, kind: DocKind = "dsd"): Promise<void> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   await git.deleteFile(
-    pathFor(solutionId, artifactId),
+    pathFor(solutionId, artifactId, kind),
     file.sha,
-    `docs: remove DSD ${artifactId} for ${solutionId}`
+    `docs: remove ${shortOf(kind)} ${artifactId} for ${solutionId}`
   )
 }
 
@@ -245,18 +257,19 @@ export async function deleteDsd(solutionId: string, artifactId: string): Promise
 export async function setDsdConfluence(
   solutionId: string,
   artifactId: string,
-  link: DsdConfluenceLink
+  link: DsdConfluenceLink,
+  kind: DocKind = "dsd"
 ): Promise<void> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   const { meta, markdown } = parse(file.content)
   const m = meta as DsdArtifactMeta
   m.confluence = link
   await git.putFile(
-    pathFor(solutionId, artifactId),
+    pathFor(solutionId, artifactId, kind),
     serialize(m, markdown),
-    `docs: link DSD ${artifactId} to Confluence ${link.pageId}`,
+    `docs: link ${shortOf(kind)} ${artifactId} to Confluence ${link.pageId}`,
     file.sha
   )
 }
@@ -264,18 +277,19 @@ export async function setDsdConfluence(
 export async function addFeedback(
   solutionId: string,
   artifactId: string,
-  feedback: DsdFeedback
+  feedback: DsdFeedback,
+  kind: DocKind = "dsd"
 ): Promise<void> {
   if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
   const git = getGit()
-  const file = await git.getFile(pathFor(solutionId, artifactId))
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
   const { meta, markdown } = parse(file.content)
   const m = meta as DsdArtifactMeta
   m.feedback = [...(m.feedback || []), feedback]
   await git.putFile(
-    pathFor(solutionId, artifactId),
+    pathFor(solutionId, artifactId, kind),
     serialize(m, markdown),
-    `docs: feedback on DSD ${artifactId}`,
+    `docs: feedback on ${shortOf(kind)} ${artifactId}`,
     file.sha
   )
 }

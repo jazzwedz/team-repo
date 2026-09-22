@@ -1,41 +1,46 @@
-// Analyst-editable DSD output structure, persisted in the data repo as
-// dsd-structure.yaml. This is the counterpart to the trainable agents: the
-// agents are HOW each section is written; this is WHAT sections exist and
-// what each must contain. When the file is absent the built-in default
-// (DEFAULT_DSD_STRUCTURE) is used, so generation behaves exactly as before
-// until an analyst fine-tunes it.
+// Analyst-editable document output structure, persisted in the data repo
+// (one file per document kind — see DOC_KINDS[kind].structureFile). This is
+// the counterpart to the trainable agents: the agents are HOW each section
+// is written; this is WHAT sections exist and what each must contain. When
+// the file is absent the built-in default for that kind is used, so
+// generation behaves exactly as before until an analyst fine-tunes it.
 //
-// The five writer agent ids and four critic agent ids are fixed (they map to
-// trainable personas); a stored structure may only edit the chapter list
-// (add / remove / reorder / move between writers / edit title + guidance)
-// and the descriptive name/focus text. Anything malformed is dropped so a
-// bad file can never break generation.
+// A kind's writer and critic agent ids are fixed (they map to trainable
+// personas); a stored structure may only edit the chapter list (add /
+// remove / reorder / move between writers / edit title + guidance) and the
+// descriptive name/focus text. Anything malformed is dropped so a bad file
+// can never break generation.
+//
+// The Dsd-named exports are kept as `kind = "dsd"` wrappers for existing
+// call sites; new code should use the Doc-named functions with a kind.
 
 import yaml from "js-yaml"
 import { getGit } from "./git"
 import { getLogger } from "./log"
+import { DOC_KINDS, type DocKind } from "./doc-kinds"
 import {
-  DEFAULT_DSD_STRUCTURE,
-  WRITER_IDS,
-  CRITIC_IDS,
-  type DsdStructure,
+  defaultStructureFor,
+  writerIdsFor,
+  criticIdsFor,
+  type DocStructure,
   type WriterGroup,
   type CriticLens,
-  type DsdChapter,
-} from "./dsd-sections"
+} from "./doc-sections"
+import type { DsdChapter } from "./dsd-sections"
 
-const PATH = "dsd-structure.yaml"
-const WRITER_ID_SET = new Set<string>(WRITER_IDS)
-const CRITIC_ID_SET = new Set<string>(CRITIC_IDS)
+export type { DocStructure }
 
-// Validate + clean an arbitrary parsed object into a DsdStructure. Returns
-// null when it isn't usable (caller falls back to the default).
-function sanitize(raw: unknown): DsdStructure | null {
+// Validate + clean an arbitrary parsed object into a structure for `kind`.
+// Returns null when it isn't usable (caller falls back to the default).
+function sanitize(raw: unknown, kind: DocKind): DocStructure | null {
   if (!raw || typeof raw !== "object") return null
   const r = raw as { groups?: unknown; critics?: unknown }
   if (!Array.isArray(r.groups)) return null
 
-  const defGroup = new Map(DEFAULT_DSD_STRUCTURE.groups.map((g) => [g.agentId, g]))
+  const def = defaultStructureFor(kind)
+  const writerIds = new Set(writerIdsFor(kind))
+  const criticIds = new Set(criticIdsFor(kind))
+  const defGroup = new Map(def.groups.map((g) => [g.agentId, g]))
   const seenChapterIds = new Set<string>()
   const seenGroups = new Set<string>()
   const groups: WriterGroup[] = []
@@ -43,7 +48,7 @@ function sanitize(raw: unknown): DsdStructure | null {
     if (!g || typeof g !== "object") continue
     const gg = g as Record<string, unknown>
     const agentId = String(gg.agentId || "")
-    if (!WRITER_ID_SET.has(agentId) || seenGroups.has(agentId)) continue
+    if (!writerIds.has(agentId) || seenGroups.has(agentId)) continue
     seenGroups.add(agentId)
     const base = defGroup.get(agentId)
     const chapters: DsdChapter[] = []
@@ -66,14 +71,14 @@ function sanitize(raw: unknown): DsdStructure | null {
   }
   if (groups.length === 0) return null
 
-  const defCritic = new Map(DEFAULT_DSD_STRUCTURE.critics.map((c) => [c.agentId, c]))
+  const defCritic = new Map(def.critics.map((c) => [c.agentId, c]))
   const seenCritics = new Set<string>()
   const critics: CriticLens[] = []
   for (const c of Array.isArray(r.critics) ? r.critics : []) {
     if (!c || typeof c !== "object") continue
     const cc = c as Record<string, unknown>
     const agentId = String(cc.agentId || "")
-    if (!CRITIC_ID_SET.has(agentId) || seenCritics.has(agentId)) continue
+    if (!criticIds.has(agentId) || seenCritics.has(agentId)) continue
     seenCritics.add(agentId)
     const base = defCritic.get(agentId)
     critics.push({
@@ -83,48 +88,61 @@ function sanitize(raw: unknown): DsdStructure | null {
     })
   }
 
-  return { groups, critics: critics.length ? critics : DEFAULT_DSD_STRUCTURE.critics }
+  return { groups, critics: critics.length ? critics : def.critics }
 }
 
-export async function getDsdStructure(): Promise<DsdStructure> {
+function pathFor(kind: DocKind): string {
+  return DOC_KINDS[kind].structureFile
+}
+
+export async function getDocStructure(kind: DocKind): Promise<DocStructure> {
   try {
-    const file = await getGit().getFile(PATH)
-    const s = sanitize(yaml.load(file.content, { schema: yaml.JSON_SCHEMA }))
+    const file = await getGit().getFile(pathFor(kind))
+    const s = sanitize(yaml.load(file.content, { schema: yaml.JSON_SCHEMA }), kind)
     if (s) return s
   } catch {
     // not committed yet → built-in default
   }
-  return DEFAULT_DSD_STRUCTURE
+  return defaultStructureFor(kind)
 }
 
-export async function getDsdStructureWithSha(): Promise<{ structure: DsdStructure; sha?: string }> {
+export async function getDocStructureWithSha(
+  kind: DocKind
+): Promise<{ structure: DocStructure; sha?: string }> {
   try {
-    const file = await getGit().getFile(PATH)
-    const s = sanitize(yaml.load(file.content, { schema: yaml.JSON_SCHEMA }))
+    const file = await getGit().getFile(pathFor(kind))
+    const s = sanitize(yaml.load(file.content, { schema: yaml.JSON_SCHEMA }), kind)
     if (s) return { structure: s, sha: file.sha }
   } catch {
     // fall through to default (no sha → first save creates the file)
   }
-  return { structure: DEFAULT_DSD_STRUCTURE }
+  return { structure: defaultStructureFor(kind) }
 }
 
-export async function saveDsdStructure(structure: DsdStructure, sha?: string): Promise<void> {
-  const clean = sanitize(structure)
-  if (!clean) throw new Error("Invalid DSD structure — needs at least one writer group with chapters.")
+export async function saveDocStructure(kind: DocKind, structure: DocStructure, sha?: string): Promise<void> {
+  const clean = sanitize(structure, kind)
+  if (!clean) throw new Error("Invalid structure — needs at least one writer group with chapters.")
   const content = yaml.dump(clean, { lineWidth: -1, noRefs: true, sortKeys: false })
-  await getGit().putFile(PATH, content, "chore(dsd): update output structure", sha)
-  getLogger().info("DSD structure updated", {
+  await getGit().putFile(pathFor(kind), content, `chore(${kind}): update output structure`, sha)
+  getLogger().info("Document structure updated", {
+    kind,
     groups: clean.groups.length,
     chapters: clean.groups.reduce((n, g) => n + g.chapters.length, 0),
   })
 }
 
-export async function resetDsdStructure(): Promise<void> {
+export async function resetDocStructure(kind: DocKind): Promise<void> {
   try {
-    const file = await getGit().getFile(PATH)
-    await getGit().deleteFile(PATH, file.sha, "chore(dsd): reset output structure to defaults")
-    getLogger().info("DSD structure reset to defaults")
+    const file = await getGit().getFile(pathFor(kind))
+    await getGit().deleteFile(pathFor(kind), file.sha, `chore(${kind}): reset output structure to defaults`)
+    getLogger().info("Document structure reset to defaults", { kind })
   } catch {
     // nothing stored → already at defaults
   }
 }
+
+// ----- backwards-compatible DSD wrappers -----
+export const getDsdStructure = () => getDocStructure("dsd")
+export const getDsdStructureWithSha = () => getDocStructureWithSha("dsd")
+export const saveDsdStructure = (structure: DocStructure, sha?: string) => saveDocStructure("dsd", structure, sha)
+export const resetDsdStructure = () => resetDocStructure("dsd")

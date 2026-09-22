@@ -15,6 +15,7 @@ import { Bot, Sparkles, Loader2, AlertCircle, Check, Pencil, X, User, Search, Gr
 import type { Agent } from "@/lib/agents"
 import { AGENT_USAGE } from "@/lib/agent-meta"
 import type { CoachProposal, AgentDelta } from "@/lib/dsd-coach"
+import { DOC_KINDS, docKindOfAgent, isDocKind } from "@/lib/doc-kinds"
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([])
@@ -134,7 +135,11 @@ export default function AgentsPage() {
     setProposal(null)
     setAppliedMsg(null)
     try {
-      const r = await fetch("/api/agents/coach/propose", { method: "POST" })
+      const r = await fetch("/api/agents/coach/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: activeTab }),
+      })
       const d = await r.json().catch(() => null)
       if (!r.ok) throw new Error((d && d.error) || `Failed (${r.status})`)
       setProposal(d as CoachProposal)
@@ -192,12 +197,12 @@ export default function AgentsPage() {
             new version.
           </p>
         </div>
-        {activeTab === "dsd" && (
+        {isDocKind(activeTab) && (
           <Button onClick={runCoach} disabled={proposing}>
             {proposing ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Retraining…</>
             ) : (
-              <><Sparkles className="h-4 w-4 mr-2" />Retrain DSD agents</>
+              <><Sparkles className="h-4 w-4 mr-2" />Retrain {DOC_KINDS[activeTab].short} agents</>
             )}
           </Button>
         )}
@@ -240,7 +245,7 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {activeTab === "dsd" && proposal && (
+      {isDocKind(activeTab) && proposal && (
         <Card className="border-blue-300">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
@@ -424,24 +429,26 @@ export default function AgentsPage() {
 }
 
 const ROLE_GROUPS: { role: string; label: string }[] = [
-  { role: "writer", label: "DSD · section writers" },
-  { role: "critic", label: "DSD · critic panel" },
-  { role: "lead", label: "DSD · lead editor" },
+  { role: "writer", label: "Section writers" },
+  { role: "critic", label: "Critic panel" },
+  { role: "lead", label: "Lead editor" },
   { role: "coach", label: "Coach" },
   { role: "assistant", label: "AI assistants" },
 ]
 
 // Functional tabs — group the agents by where they're used, not by role.
-type TabId = "dsd" | "catalog" | "compose"
+type TabId = "dsd" | "fs" | "catalog" | "compose"
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "dsd", label: "DSD team" },
+  { id: "fs", label: "FS team" },
   { id: "catalog", label: "Catalog & consistency" },
   { id: "compose", label: "Compose & import" },
 ]
 
 const TAB_BLURB: Record<TabId, string> = {
   dsd: "Section writers, critic lenses, the lead editor and the coach that power DSD generation. Use “Retrain DSD agents” to turn DSD feedback into prompt improvements.",
+  fs: "The team behind Functional Specification generation — the same roles as the DSD team, trained separately from FS feedback. Its default chapter structure is a placeholder until the FS format is defined (Settings → Document Output → FS).",
   catalog:
     "Agents that improve the catalog from documents and existing data — the catalog enricher, the relationship auditor, and the Catalog Curator (which trains from feedback in its “Curate from doc” dialog).",
   compose:
@@ -453,7 +460,7 @@ const TAB_BLURB: Record<TabId, string> = {
 const CATALOG_ASSISTANTS = new Set(["catalog-enricher", "relationship-auditor", "catalog-curator"])
 
 function tabForAgent(a: Agent): TabId {
-  if (a.role !== "assistant") return "dsd"
+  if (a.role !== "assistant") return docKindOfAgent(a.id) ?? "dsd"
   return CATALOG_ASSISTANTS.has(a.id) ? "catalog" : "compose"
 }
 

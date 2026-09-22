@@ -1,11 +1,12 @@
-// POST /api/solutions/[id]/dsd/artifacts/[artifactId]/feedback
+// POST /api/solutions/[id]/docs/[kind]/artifacts/[artifactId]/feedback
 //
-// Append analyst feedback to a saved DSD. This is the training signal the
-// coach later uses to improve the writer / critic agents.
+// Append analyst feedback to a saved document. This is the training signal
+// the kind's coach later uses to improve its writer / critic agents.
 
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { addFeedback, type DsdFeedback } from "@/lib/dsd-store"
+import { isDocKind, DOC_KINDS } from "@/lib/doc-kinds"
 import { getCurrentUser } from "@/lib/current-user"
 import { isValidName } from "@/lib/validate"
 import { withRouteContext } from "@/lib/route-context"
@@ -15,13 +16,12 @@ export const dynamic = "force-dynamic"
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string; artifactId: string }> }
+  { params }: { params: Promise<{ id: string; kind: string; artifactId: string }> }
 ) {
   return withRouteContext(request, async () => {
-    const { id, artifactId } = await params
-    if (!isValidName(id)) {
-      return NextResponse.json({ error: "Invalid solution id" }, { status: 400 })
-    }
+    const { id, kind, artifactId } = await params
+    if (!isValidName(id)) return NextResponse.json({ error: "Invalid solution id" }, { status: 400 })
+    if (!isDocKind(kind)) return NextResponse.json({ error: "Unknown document kind" }, { status: 404 })
     let body: { rating?: string; comment?: string; correctedText?: string; section?: string }
     try {
       body = await request.json()
@@ -45,10 +45,10 @@ export async function POST(
       by: getCurrentUser(request),
     }
     try {
-      await addFeedback(id, artifactId, feedback)
+      await addFeedback(id, artifactId, feedback, kind)
       return NextResponse.json({ success: true })
     } catch (error) {
-      getLogger().error("Failed to add DSD feedback", {
+      getLogger().error(`Failed to add ${DOC_KINDS[kind].short} feedback`, {
         id,
         artifactId,
         err: error instanceof Error ? error.message : "Unknown error",

@@ -11,7 +11,8 @@ import {
   setCoachWatermark,
   type Agent,
 } from "./agents"
-import { WRITER_GROUPS, COACH_AGENT_ID } from "./dsd-sections"
+import { DOC_KINDS, type DocKind } from "./doc-kinds"
+import { defaultStructureFor, coachIdFor } from "./doc-sections"
 import { listSolutions } from "./solutions"
 import { listDsd, type DsdFeedback } from "./dsd-store"
 import { getLogger } from "./log"
@@ -34,7 +35,7 @@ interface FeedbackEntry extends DsdFeedback {
   mode: string
 }
 
-async function gatherRecentFeedback(limit: number, since: string): Promise<FeedbackEntry[]> {
+async function gatherRecentFeedback(kind: DocKind, limit: number, since: string): Promise<FeedbackEntry[]> {
   const out: FeedbackEntry[] = []
   let solutions
   try {
@@ -45,7 +46,7 @@ async function gatherRecentFeedback(limit: number, since: string): Promise<Feedb
   for (const s of solutions) {
     let arts
     try {
-      arts = await listDsd(s.id)
+      arts = await listDsd(s.id, kind)
     } catch {
       continue
     }
@@ -61,17 +62,19 @@ async function gatherRecentFeedback(limit: number, since: string): Promise<Feedb
   return out.slice(0, limit)
 }
 
-export async function proposeCoaching(): Promise<CoachProposal> {
-  const agents = await listAgents()
-  const coach = agents.find((a) => a.id === COACH_AGENT_ID)
-  const trainable = agents.filter((a) => a.id !== COACH_AGENT_ID)
+export async function proposeCoaching(kind: DocKind = "dsd"): Promise<CoachProposal> {
+  const prefix = `${DOC_KINDS[kind].agentPrefix}-`
+  const coachId = coachIdFor(kind)
+  const agents = (await listAgents()).filter((a) => a.id.startsWith(prefix))
+  const coach = agents.find((a) => a.id === coachId)
+  const trainable = agents.filter((a) => a.id !== coachId)
 
-  const since = await getCoachWatermark()
-  const feedback = await gatherRecentFeedback(40, since)
+  const since = await getCoachWatermark(kind)
+  const feedback = await gatherRecentFeedback(kind, 40, since)
   if (feedback.length === 0) {
     return {
       deltas: {},
-      rationale: "No new analyst feedback since the last training round — rate some DSDs first.",
+      rationale: `No new analyst feedback since the last training round — rate some ${DOC_KINDS[kind].short}s first.`,
       feedbackConsidered: 0,
       feedbackIds: [],
     }
@@ -79,7 +82,7 @@ export async function proposeCoaching(): Promise<CoachProposal> {
 
   const llm = await getLLM()
   const raw = await llm.complete({
-    prompt: coachPrompt(coach?.system_prompt || "", trainable, feedback),
+    prompt: coachPrompt(coach?.system_prompt || "", trainable, feedback, kind),
     maxTokens: 3000,
   })
   const proposal = parseProposal(raw, new Set(trainable.map((a) => a.id)))
@@ -89,7 +92,7 @@ export async function proposeCoaching(): Promise<CoachProposal> {
   // Advance the watermark past everything this round considered.
   const newest = feedback.reduce((mx, f) => (f.at && f.at > mx ? f.at : mx), since)
   try {
-    await setCoachWatermark(newest)
+    await setCoachWatermark(newest, kind)
   } catch (e) {
     getLogger().error("Failed to advance coach watermark", {
       err: e instanceof Error ? e.message : String(e),
@@ -105,9 +108,8 @@ export async function proposeCoaching(): Promise<CoachProposal> {
   return proposal
 }
 
-const SECTION_NAME = new Map(WRITER_GROUPS.map((g) => [g.agentId, g.name]))
-
-function coachPrompt(coachPromptText: string, agents: Agent[], feedback: FeedbackEntry[]): string {
+function coachPrompt(coachPromptText: string, agents: Agent[], feedback: FeedbackEntry[], kind: DocKind): string {
+  const SECTION_NAME = new Map(defaultStructureFor(kind).groups.map((g) => [g.agentId, g.name]))
   const roster = agents
     .map(
       (a) =>

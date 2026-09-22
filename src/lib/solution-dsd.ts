@@ -24,14 +24,15 @@ import { codeSearch } from "./code-search"
 import { buildSolutionSequenceMermaid } from "./solution-sequence"
 import { getDataModel, isDataModelConfigured } from "./data-model"
 import {
-  LEAD_AGENT_ID,
   flatChapters,
   type WriterGroup,
   type CriticLens,
   type DsdChapter,
   type DsdStructure,
 } from "./dsd-sections"
-import { getDsdStructure } from "./dsd-structure-store"
+import { getDocStructure } from "./dsd-structure-store"
+import { leadIdFor, docLabel, docShort } from "./doc-sections"
+import type { DocKind } from "./doc-kinds"
 
 // ----------------------------- job store -----------------------------
 
@@ -77,6 +78,9 @@ export interface DsdOptions {
    *  Defaults to true. Set false to skip it — much faster, since the repo
    *  reads and Code Search queries are serial network round-trips. */
   useSourceCode?: boolean
+  /** Document kind to generate (default "dsd"). Selects the chapter structure,
+   *  the agent team and the artifact library. */
+  kind?: DocKind
 }
 
 // How much of the source document to feed into the prompt. Bounds the
@@ -200,10 +204,11 @@ async function runDsd(
   const directives = buildDirectives(options)
   // The output structure (chapters + writers + critics) is analyst-editable;
   // load the active one (built-in default until they save edits).
-  const structure = await getDsdStructure()
+  const kind: DocKind = options.kind ?? "dsd"
+  const structure = await getDocStructure(kind)
   const result = mode === "team"
-    ? await runTeamDsd(id, solution, facts, llm, provided, options, directives, structure)
-    : await runQuickDsd(id, solution, facts, llm, directives)
+    ? await runTeamDsd(id, solution, facts, llm, provided, options, directives, structure, kind)
+    : await runQuickDsd(id, solution, facts, llm, directives, kind)
 
   // Persist the artifact to the DSD library (best-effort: even if the
   // save fails the markdown is still returned so the user sees it).
@@ -211,7 +216,7 @@ async function runDsd(
   const artifactId = newArtifactId()
   // Default title: "<solution> v<N>" by generation count. The analyst can
   // rename it afterwards.
-  const priorCount = await listDsd(solution.id).then((a) => a.length).catch(() => 0)
+  const priorCount = await listDsd(solution.id, kind).then((a) => a.length).catch(() => 0)
   const defaultTitle = `${solution.name} v${priorCount + 1}`
   try {
     await saveDsd(
@@ -231,7 +236,8 @@ async function runDsd(
         iterations: result.iterations,
         feedback: [],
       },
-      result.markdown
+      result.markdown,
+      kind
     )
     jobs.set(id, {
       status: "done",
@@ -268,18 +274,18 @@ function buildDirectives(o: DsdOptions): string {
 
 // ----- quick mode: single writer → critic → revise (built-in prompts) -----
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runQuickDsd(id: string, solution: Solution, facts: string, llm: any, directives: string): Promise<DsdResult> {
+async function runQuickDsd(id: string, solution: Solution, facts: string, llm: any, directives: string, kind: DocKind): Promise<DsdResult> {
   setPhase(id, "drafting")
-  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, undefined, directives), maxTokens: 4096 })
+  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, undefined, directives, kind), maxTokens: 4096 })
   let iterations = 0
   for (let i = 0; i < 2; i++) {
     setPhase(id, "reviewing", { iterations })
-    const review = await llm.complete({ prompt: criticPrompt(facts, draft), maxTokens: 1500 })
+    const review = await llm.complete({ prompt: criticPrompt(facts, draft, undefined, kind), maxTokens: 1500 })
     const verdict = parseVerdict(review)
     if (verdict.ok || verdict.issues.length === 0) break
     iterations++
     setPhase(id, "revising", { iterations })
-    draft = await llm.complete({ prompt: revisePrompt(facts, draft, verdict.issues, undefined, directives), maxTokens: 4096 })
+    draft = await llm.complete({ prompt: revisePrompt(facts, draft, verdict.issues, undefined, directives, kind), maxTokens: 4096 })
   }
   return { markdown: draft, iterations }
 }
@@ -295,7 +301,8 @@ async function runTeamDsd(
   provided: Record<string, string>,
   options: DsdOptions,
   directives: string,
-  structure: DsdStructure
+  structure: DsdStructure,
+  kind: DocKind
 ): Promise<DsdResult> {
   // The editable structure drives the document: which chapters exist, who
   // writes them, and the critic lenses. On the built-in default these are
@@ -308,12 +315,12 @@ async function runTeamDsd(
   const [writers, critics, lead] = await Promise.all([
     Promise.all(WRITER_GROUPS.map((g) => getAgent(g.agentId))),
     Promise.all(CRITIC_LENSES.map((c) => getAgent(c.agentId))),
-    getAgent(LEAD_AGENT_ID),
+    getAgent(leadIdFor(kind)),
   ])
   const agentVersions: Record<string, number> = {}
   for (const a of [...writers, ...critics, lead]) agentVersions[a.id] = a.version
 
-  const exemplars = await gatherExemplars(solution.id)
+  const exemplars = await gatherExemplars(solution.id, kind)
 
   // Append the setup directives (depth / audience / language) to each
   // writer's persona, and the lead's.
@@ -388,7 +395,7 @@ async function runTeamDsd(
       if (unlocked.length > 0) {
         writerOut = (
           await llm.complete({
-            prompt: sectionWriterPrompt(g, facts, inst(writers[i]), exemplars.get(g.agentId), unlocked, globalLockedContext),
+            prompt: sectionWriterPrompt(g, facts, inst(writers[i]), exemplars.get(g.agentId), unlocked, globalLockedContext, kind),
             maxTokens: 2200,
           })
         ).trim()
@@ -404,7 +411,7 @@ async function runTeamDsd(
   const verdicts = await Promise.all(
     CRITIC_LENSES.map((c, i) =>
       llm
-        .complete({ prompt: criticLensPrompt(c, facts, assembled1, agentInstruction(critics[i]), lockedTitles, WRITER_GROUPS), maxTokens: 1200 })
+        .complete({ prompt: criticLensPrompt(c, facts, assembled1, agentInstruction(critics[i]), lockedTitles, WRITER_GROUPS, kind), maxTokens: 1200 })
         .then((r: string) => parseVerdict(r))
         .catch(() => ({ ok: true, issues: [] as { section: string; problem: string }[] }))
     )
@@ -436,7 +443,7 @@ async function runTeamDsd(
         if (!sec) return
         const writerOut: string = (
           await llm.complete({
-            prompt: reviseSectionPrompt(g, facts, sec.body || "", issues, inst(writers[i]), unlocked, globalLockedContext),
+            prompt: reviseSectionPrompt(g, facts, sec.body || "", issues, inst(writers[i]), unlocked, globalLockedContext, kind),
             maxTokens: 2200,
           })
         ).trim()
@@ -448,12 +455,12 @@ async function runTeamDsd(
   // 4. Deterministic assembly. Lead polish runs only when nothing is locked,
   //    so locked chapters are guaranteed verbatim.
   setPhase(id, "consolidating", { iterations })
-  const assembled = assembleDoc(solution, sections, includedTitles, WRITER_GROUPS)
+  const assembled = assembleDoc(solution, sections, includedTitles, WRITER_GROUPS, kind)
   let markdown = assembled
   if (!hasLocks) {
     try {
       const polished: string = (
-        await llm.complete({ prompt: leadPrompt(inst(lead), assembled), maxTokens: 8192 })
+        await llm.complete({ prompt: leadPrompt(inst(lead), assembled, kind), maxTokens: 8192 })
       ).trim()
       if (isPolishSafe(polished, assembled, includedTitles)) markdown = polished
     } catch {
@@ -538,10 +545,10 @@ export function renderRuntimeProcessFlow(solution: Solution): string {
 
 // Most recent analyst correction per section group, used as a golden
 // few-shot exemplar so writers match the depth/style the analyst wants.
-async function gatherExemplars(solutionId: string): Promise<Map<string, string>> {
+async function gatherExemplars(solutionId: string, kind: DocKind): Promise<Map<string, string>> {
   const map = new Map<string, string>()
   try {
-    const arts = await listDsd(solutionId) // newest first, includes feedback
+    const arts = await listDsd(solutionId, kind) // newest first, includes feedback
     for (const a of arts) {
       for (const f of a.feedback || []) {
         if (f.section && f.correctedText && !map.has(f.section)) map.set(f.section, f.correctedText)
@@ -566,11 +573,11 @@ function mapIssueToGroup(section: string | undefined, groups: WriterGroup[]): st
   return byChapter?.agentId
 }
 
-function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[], groups: WriterGroup[]): string {
+function assembleDoc(solution: Solution, sections: DsdSection[], includedTitles: string[], groups: WriterGroup[], kind: DocKind): string {
   const toc = ["1. Document History", ...includedTitles].map((t) => `- ${t}`).join("\n")
   const ordered = groups.map((g) => sections.find((s) => s.id === g.agentId)?.body || "").filter(Boolean)
   return [
-    `# ${solution.name} — Detailed Solution Description`,
+    `# ${solution.name} — ${docLabel(kind)}`,
     ``,
     `## Table of Contents`,
     toc,
@@ -1019,10 +1026,10 @@ async function gatherDataModelEvidence(solution: Solution, components: Component
 
 const STYLE = `Write like a knowledgeable colleague — clear, direct, no fluff. Short sentences. No marketing words (leverage, robust, seamless, synergy, holistic, empower, streamline). State facts plainly.`
 
-function draftPrompt(solution: Solution, facts: string, instruction?: string, directives?: string): string {
+function draftPrompt(solution: Solution, facts: string, instruction?: string, directives?: string, kind: DocKind = "dsd"): string {
   const base =
     instruction ||
-    `You are a solution architect writing a Detailed Solution Description (DSD) in Markdown. ${STYLE}`
+    `You are a solution architect writing a ${docLabel(kind)} (${docShort(kind)}) in Markdown. ${STYLE}`
   const lead = directives ? `${base}\n\n${directives}` : base
   return `${lead}
 
@@ -1030,9 +1037,9 @@ Base the document STRICTLY on the verified facts below. Do not introduce compone
 
 ${facts}
 
-Produce the DSD with these chapters, in order:
+Produce the ${docShort(kind)} with these chapters, in order:
 
-# ${solution.name} — Detailed Solution Description
+# ${solution.name} — ${docLabel(kind)}
 
 ## Table of Contents
 (numbered list of the chapters below)
@@ -1087,10 +1094,10 @@ Referenced documents, data models and external specs from the facts (or "No exte
 Output only the Markdown document.`
 }
 
-function criticPrompt(facts: string, draft: string, instruction?: string): string {
+function criticPrompt(facts: string, draft: string, instruction?: string, kind: DocKind = "dsd"): string {
   const lead =
     instruction ||
-    `You are reviewing a Detailed Solution Description draft against the verified facts it must be based on. Find ONLY real problems.`
+    `You are reviewing a ${docLabel(kind)} draft against the verified facts it must be based on. Find ONLY real problems.`
   return `${lead}
 
 Flag an issue when the draft:
@@ -1115,12 +1122,13 @@ function revisePrompt(
   draft: string,
   issues: { section: string; problem: string }[],
   instruction?: string,
-  directives?: string
+  directives?: string,
+  kind: DocKind = "dsd"
 ): string {
   const issueList = issues.map((i, n) => `${n + 1}. [${i.section}] ${i.problem}`).join("\n")
   const lead = [instruction, directives].filter(Boolean).join("\n\n")
   const leadBlock = lead ? `${lead}\n\n` : ""
-  return `${leadBlock}Revise the Detailed Solution Description below to fix the listed issues. Keep everything that is correct; change only what the issues require. Stay strictly within the verified facts. ${STYLE}
+  return `${leadBlock}Revise the ${docLabel(kind)} below to fix the listed issues. Keep everything that is correct; change only what the issues require. Stay strictly within the verified facts. ${STYLE}
 
 VERIFIED FACTS:
 ${facts}
@@ -1204,8 +1212,7 @@ function sectionWriterPrompt(
   instruction: string,
   exemplar: string | undefined,
   chaptersToWrite: DsdChapter[],
-  lockedContext: string
-): string {
+  lockedContext: string, kind: DocKind): string {
   const chapters = chaptersToWrite.map((c) => `## ${c.title}\n${c.guidance}`).join("\n\n")
   const ex = exemplar
     ? `\nAn analyst-approved example of the depth and style they want for this part — match it, but use THIS solution's facts (do not copy its content):\n"""\n${exemplar}\n"""\n`
@@ -1215,7 +1222,7 @@ function sectionWriterPrompt(
     : ""
   return `${instruction}
 
-Write ONLY your assigned chapters of a Detailed Solution Description, grounded STRICTLY in the verified facts. Output each chapter with its exact "## N. Title" heading, in order, and nothing else — no document title, no other chapters.
+Write ONLY your assigned chapters of a ${docLabel(kind)}, grounded STRICTLY in the verified facts. Output each chapter with its exact "## N. Title" heading, in order, and nothing else — no document title, no other chapters.
 
 YOUR CHAPTERS:
 ${chapters}
@@ -1226,14 +1233,14 @@ ${facts}
 Output only the Markdown for your chapters.`
 }
 
-function criticLensPrompt(lens: CriticLens, facts: string, draft: string, instruction: string, lockedTitles: string[], groupList: WriterGroup[]): string {
+function criticLensPrompt(lens: CriticLens, facts: string, draft: string, instruction: string, lockedTitles: string[], groupList: WriterGroup[], kind: DocKind): string {
   const groups = groupList.map((g) => `- ${g.agentId}: ${g.chapters.map((c) => c.title).join("; ")}`).join("\n")
   const locked = lockedTitles.length
     ? `\nThese chapters are analyst-provided and FIXED — do NOT flag them, they will not be changed: ${lockedTitles.join("; ")}.\n`
     : ""
   return `${instruction}
 
-Review the DSD draft below through your lens only. For each real problem, return an issue tagged with the writer GROUP id that owns the affected chapter.
+Review the ${docShort(kind)} draft below through your lens only. For each real problem, return an issue tagged with the writer GROUP id that owns the affected chapter.
 
 WRITER GROUPS (use the id as "section"):
 ${groups}
@@ -1256,8 +1263,7 @@ function reviseSectionPrompt(
   issues: { section: string; problem: string }[],
   instruction: string,
   chaptersToWrite: DsdChapter[],
-  lockedContext: string
-): string {
+  lockedContext: string, kind: DocKind): string {
   const issueList = issues.map((i, n) => `${n + 1}. ${i.problem}`).join("\n")
   const chapters = chaptersToWrite.map((c) => c.title).join(", ")
   const locked = lockedContext
@@ -1279,10 +1285,10 @@ ${body}
 Output only the corrected Markdown for the chapters listed above.`
 }
 
-function leadPrompt(instruction: string, assembled: string): string {
+function leadPrompt(instruction: string, assembled: string, kind: DocKind): string {
   return `${instruction}
 
-Polish the assembled DSD below into one coherent document: improve flow, transitions and terminology consistency, and remove duplication ACROSS sections. Do NOT add or remove facts, chapters or the architecture diagram, and keep every chapter with its exact "## N. Title" heading. Return the FULL document.
+Polish the assembled ${docShort(kind)} below into one coherent document: improve flow, transitions and terminology consistency, and remove duplication ACROSS sections. Do NOT add or remove facts, chapters or the architecture diagram, and keep every chapter with its exact "## N. Title" heading. Return the FULL document.
 
 DOCUMENT:
 ${assembled}

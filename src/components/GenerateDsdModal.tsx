@@ -17,7 +17,9 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Sparkles, FileText, Paperclip, Loader2, X, FileCode2 } from "lucide-react"
-import { ALL_CHAPTERS, flatChapters, type FlatChapter } from "@/lib/dsd-sections"
+import { flatChapters, type FlatChapter } from "@/lib/dsd-sections"
+import { allChaptersFor, docShort } from "@/lib/doc-sections"
+import type { DocKind } from "@/lib/doc-kinds"
 
 export interface DsdGenerateOptions {
   mode: "quick" | "team"
@@ -70,6 +72,7 @@ export function GenerateDsdModal({
   hasPreviousLocked,
   latestLocked,
   onGenerate,
+  kind = "dsd",
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
@@ -79,6 +82,8 @@ export function GenerateDsdModal({
   /** Locked chapters parsed from the most recent DSD (chapter id → text). */
   latestLocked: Record<string, string>
   onGenerate: (opts: DsdGenerateOptions) => void
+  /** Document kind being generated — selects the chapter structure. */
+  kind?: DocKind
 }) {
   const [mode, setMode] = useState<"quick" | "team">("team")
   const [useLast, setUseLast] = useState(true)
@@ -103,10 +108,11 @@ export function GenerateDsdModal({
   const [showAdvanced, setShowAdvanced] = useState(false)
   // The DSD output structure is analyst-editable; load the active chapter
   // list (falls back to the built-in default until edits are saved).
-  const [chapters, setChapters] = useState<FlatChapter[]>(ALL_CHAPTERS)
+  const [chapters, setChapters] = useState<FlatChapter[]>(() => allChaptersFor(kind))
   useEffect(() => {
     if (!open) return
-    fetch("/api/dsd-structure")
+    setChapters(allChaptersFor(kind))
+    fetch(`/api/doc-structure/${kind}`)
       .then((r) => r.json())
       .then((d) => {
         const groups = d?.structure?.groups
@@ -115,7 +121,7 @@ export function GenerateDsdModal({
       .catch(() => {
         /* keep default */
       })
-  }, [open])
+  }, [open, kind])
 
   // Source requirements documents (BRD/spec) — stored ON the solution and
   // reused across the composer and every DSD run (upload once).
@@ -255,7 +261,7 @@ export function GenerateDsdModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Generate DSD
+            Generate {docShort(kind)}
           </DialogTitle>
           <DialogDescription>Set up how the document is produced, then generate.</DialogDescription>
         </DialogHeader>
@@ -320,7 +326,7 @@ export function GenerateDsdModal({
                 <label className="flex items-center gap-2 rounded-md border bg-muted/20 p-3 text-sm cursor-pointer">
                   <input type="checkbox" className="h-4 w-4" checked={useLast} onChange={(e) => setUseLast(e.target.checked)} />
                   <span>
-                    Reuse locked content from the last DSD
+                    Reuse locked content from the last {docShort(kind)}
                     <span className="text-muted-foreground"> — keeps your previously fixed chapters word-for-word.</span>
                   </span>
                 </label>

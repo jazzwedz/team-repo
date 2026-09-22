@@ -24,11 +24,12 @@ import {
 } from "@/lib/ui-blocks"
 import { useUIConfig } from "@/components/UIConfigProvider"
 import { ApplicationSettings } from "@/components/ApplicationSettings"
+import { DOC_KINDS, DOC_KIND_IDS } from "@/lib/doc-kinds"
 
 type SettingsTab = "health" | "dsd" | "ui" | "app"
 const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
   { id: "health", label: "Health Checks" },
-  { id: "dsd", label: "DSD Output" },
+  { id: "dsd", label: "Document Output" },
   { id: "ui", label: "UI Configuration" },
   { id: "app", label: "Application Settings" },
 ]
@@ -301,7 +302,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Connection health, the DSD output structure, what the component detail page shows, and the application configuration.
+            Connection health, the generated-document output structures, what the component detail page shows, and the application configuration.
           </p>
         </div>
       </div>
@@ -335,23 +336,29 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ListTree className="h-4 w-4 text-muted-foreground" />
-            DSD Output
+            Document Output
           </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Fine-tune what each generated document contains — chapters, titles and the guidance each writer follows.
+          </p>
         </CardHeader>
-        <CardContent>
-          <Link
-            href="/dsd-structure"
-            className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/40 transition-colors"
-          >
-            <ListTree className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div className="min-w-0">
-              <div className="text-sm font-medium">Edit the DSD output structure</div>
-              <div className="text-xs text-muted-foreground">
-                Chapters, titles and guidance the generated DSD must contain — add, remove, reorder or move chapters between writers.
+        <CardContent className="space-y-2">
+          {DOC_KIND_IDS.map((k) => (
+            <Link
+              key={k}
+              href={`/doc-structure/${k}`}
+              className="flex items-center gap-3 rounded-md border p-3 hover:bg-muted/40 transition-colors"
+            >
+              <ListTree className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">
+                  {DOC_KINDS[k].short} — {DOC_KINDS[k].label}
+                </div>
+                <div className="text-xs text-muted-foreground">{DOC_KINDS[k].description}</div>
               </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
-          </Link>
+              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
+            </Link>
+          ))}
         </CardContent>
       </Card>
       )}
