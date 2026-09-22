@@ -7,6 +7,20 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.3] — 2026-09-22
+
+### Fixed
+
+- **AI compose / process draft no longer fail on a small JSON slip from the
+  model** (“AI compose failed: Expected ',' or ']' after array element…”).
+  Both endpoints did a bare `JSON.parse` on the model output, so a missing
+  comma, a trailing comma, a stray comment or a code fence failed the whole
+  request. A shared tolerant parser (`src/lib/llm/json.ts`) now extracts the
+  object, repairs those structural slips outside string literals, and as a
+  last resort asks the model once to fix its own JSON before giving up with
+  a clear message.
+
+
 ## [0.40.2] — 2026-09-22
 
 ### Changed

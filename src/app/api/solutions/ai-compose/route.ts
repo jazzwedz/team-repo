@@ -21,6 +21,7 @@ import { getLogger } from "@/lib/log"
 import { LINK_ROLES, LINK_PROTOCOLS, MEMBER_DISPOSITIONS, PROCESS_STEP_KINDS, PROCESS_ROLES } from "@/lib/constants"
 import { slugifyId } from "@/lib/component-schema"
 import { getAgent, agentInstruction } from "@/lib/agents"
+import { parseLlmJson } from "@/lib/llm/json"
 import type {
   LinkRole,
   LinkProtocol,
@@ -111,7 +112,8 @@ export async function POST(request: Request) {
         catalog
       )
       const raw = await llm.complete({ prompt, maxTokens: 4096 })
-      const parsed = parseJsonObject(raw)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = (await parseLlmJson(raw, (o) => llm.complete(o))) as Record<string, any>
 
       // Validate / coerce against the catalog and enums. Members and
       // flow endpoints must reference real component ids (the model is
@@ -258,19 +260,6 @@ function coerceProcess(raw: any, memberResolve: Map<string, string>, memberNames
   return { id: slugifyId(name) || "main-process", name, actors, steps }
 }
 
-// Extract the first JSON object from the model output (tolerates code
-// fences and surrounding prose).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseJsonObject(text: string): Record<string, any> {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const body = fenced ? fenced[1] : text
-  const start = body.indexOf("{")
-  const end = body.lastIndexOf("}")
-  if (start < 0 || end < 0 || end <= start) {
-    throw new Error("Model did not return JSON")
-  }
-  return JSON.parse(body.slice(start, end + 1))
-}
 
 function buildPrompt(
   lead: string,

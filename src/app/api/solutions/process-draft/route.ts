@@ -17,6 +17,7 @@ import { withRouteContext } from "@/lib/route-context"
 import { getLogger } from "@/lib/log"
 import { PROCESS_STEP_KINDS, PROCESS_ROLES } from "@/lib/constants"
 import { getAgent, agentInstruction } from "@/lib/agents"
+import { parseLlmJson } from "@/lib/llm/json"
 import type { ProcessActor, SolutionProcessStep, ProcessStepKind, ProcessRole } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -74,7 +75,8 @@ export async function POST(request: Request) {
       const drafter = await getAgent("process-drafter")
       const prompt = buildPrompt(agentInstruction(drafter), body, members)
       const raw = await llm.complete({ prompt, maxTokens: 2048 })
-      const parsed = parseJsonObject(raw)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = (await parseLlmJson(raw, (o) => llm.complete(o))) as Record<string, any>
 
       const memberIds = new Set(members.map((m) => m.id))
       const memberName = new Map(members.map((m) => [m.id, m.name]))
@@ -132,15 +134,6 @@ export async function POST(request: Request) {
   })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseJsonObject(text: string): Record<string, any> {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const bodyText = fenced ? fenced[1] : text
-  const start = bodyText.indexOf("{")
-  const end = bodyText.lastIndexOf("}")
-  if (start < 0 || end < 0 || end <= start) throw new Error("Model did not return JSON")
-  return JSON.parse(bodyText.slice(start, end + 1))
-}
 
 function buildPrompt(lead: string, body: Body, members: DraftMember[]): string {
   const memberLines = members
