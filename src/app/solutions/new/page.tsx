@@ -331,9 +331,26 @@ export default function NewSolutionPage() {
           sourceDoc: sourceDoc?.text || undefined,
         }),
       })
-      const data = await r.json().catch(() => null)
-      if (!r.ok) throw new Error((data && data.error) || `AI assist failed (${r.status})`)
-      setAiResult(data as AiCompose)
+      const start = await r.json().catch(() => null)
+      if (!r.ok) throw new Error((start && start.error) || `AI assist failed (${r.status})`)
+      const jobId: string | undefined = start && start.jobId
+      if (!jobId) throw new Error("AI assist did not start a job.")
+      // The compose runs as a background job (the prompt carries the whole
+      // catalog, so a single request could outlive the proxy timeout).
+      // Poll until it finishes.
+      let result: AiCompose | null = null
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 1500))
+        const p = await fetch(`/api/solutions/ai-compose?jobId=${encodeURIComponent(jobId)}`)
+        const j = await p.json().catch(() => null)
+        if (!p.ok) throw new Error((j && j.error) || `AI assist failed (${p.status})`)
+        if (j.status === "error") throw new Error(j.error || "AI assist failed")
+        if (j.status === "done") {
+          result = j.result as AiCompose
+          break
+        }
+      }
+      setAiResult(result)
     } catch (e) {
       setAiError(e instanceof Error ? e.message : "AI assist failed")
     } finally {

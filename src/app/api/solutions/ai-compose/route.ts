@@ -1,4 +1,5 @@
-// POST /api/solutions/ai-compose
+// POST /api/solutions/ai-compose        → start an AI compose job, returns { jobId }
+// GET  /api/solutions/ai-compose?jobId=  → poll { status, result?, error? }
 //
 // AI-assisted solution skeleton. Given the analyst's intent (name + goal
 // + description), the LLM reads the whole catalog (the same LLM-friendly
@@ -6,9 +7,10 @@
 // delivered capabilities/processes, member components (chosen from real
 // catalog ids), gap "new" components, and flows between members.
 //
-// Reuses the existing LLM client (getLLM) and the catalog export
-// (buildCatalogMarkdown). Returns a structured proposal the composer
-// wizard pre-fills its steps with — the analyst then edits and creates.
+// The prompt carries the entire catalog, so the model call can run long —
+// longer than a reverse proxy keeps one HTTP request open (that surfaced as
+// "AI assist failed (502)"). It therefore runs as a detached in-process
+// job, like DSD generation, and the client polls for the result.
 
 import { NextResponse } from "next/server"
 import { listComponents } from "@/lib/github"
@@ -22,6 +24,7 @@ import { LINK_ROLES, LINK_PROTOCOLS, MEMBER_DISPOSITIONS, PROCESS_STEP_KINDS, PR
 import { slugifyId } from "@/lib/component-schema"
 import { getAgent, agentInstruction } from "@/lib/agents"
 import { parseLlmJson } from "@/lib/llm/json"
+import { startAiJob, getAiJob } from "@/lib/ai-jobs"
 import type {
   LinkRole,
   LinkProtocol,
@@ -65,6 +68,16 @@ interface AiFlow {
   status: "existing" | "proposed"
 }
 
+export interface ComposeResult {
+  goal: string
+  description: string
+  delivers: { capabilities: string[] }
+  members: AiMember[]
+  newComponents: AiNewComponent[]
+  flows: AiFlow[]
+  process?: SolutionProcess
+}
+
 export async function POST(request: Request) {
   return withRouteContext(request, async () => {
     if (!isLLMConfigured()) {
@@ -87,124 +100,125 @@ export async function POST(request: Request) {
     // The name is the mandatory seed (goal/description can be empty and are
     // filled by this call). Require at least a name to reason from.
     if (!body.name || body.name.trim() === "") {
-      return NextResponse.json(
-        { error: "A name is required for AI assist." },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "A name is required for AI assist." }, { status: 400 })
     }
 
-    try {
-      const components = await listComponents()
-      const catalog = buildCatalogMarkdown(components, {
-        generatedAt: new Date().toISOString(),
-      })
-      const ids = new Set(components.map((c) => c.id))
-      const compName = new Map(components.map((c) => [c.id, c.name]))
-
-      const llm = await getLLM()
-      const composer = await getAgent("solution-composer")
-      const prompt = buildPrompt(
-        agentInstruction(composer),
-        sanitizeForPrompt(body.name || ""),
-        sanitizeForPrompt(body.goal || ""),
-        sanitizeForPrompt(body.description || ""),
-        sanitizeForPrompt((body.sourceDoc || "").slice(0, 12000)),
-        catalog
-      )
-      const raw = await llm.complete({ prompt, maxTokens: 4096 })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parsed = (await parseLlmJson(raw, (o) => llm.complete(o))) as Record<string, any>
-
-      // Validate / coerce against the catalog and enums. Members and
-      // flow endpoints must reference real component ids (the model is
-      // told this, but we enforce it); new components are free-form.
-      const newComponents: AiNewComponent[] = Array.isArray(parsed.newComponents)
-        ? parsed.newComponents
-            .filter((n: unknown) => n && typeof n === "object")
-            .map((n: Record<string, unknown>) => ({
-              name: String(n.name || "").trim(),
-              type: typeof n.type === "string" ? n.type : "service",
-              role: typeof n.role === "string" ? n.role : undefined,
-            }))
-            .filter((n: AiNewComponent) => n.name !== "")
-        : []
-
-      const members: AiMember[] = Array.isArray(parsed.members)
-        ? parsed.members
-            .filter((m: unknown) => m && typeof m === "object")
-            .map((m: Record<string, unknown>) => ({
-              component: String(m.component || "").trim(),
-              disposition: MEMBER_DISPOSITIONS.includes(m.disposition as MemberDisposition)
-                ? (m.disposition as MemberDisposition)
-                : "reuse",
-              role: typeof m.role === "string" ? m.role : undefined,
-            }))
-            .filter((m: AiMember) => ids.has(m.component))
-        : []
-
-      const flows: AiFlow[] = Array.isArray(parsed.flows)
-        ? parsed.flows
-            .filter((f: unknown) => f && typeof f === "object")
-            .map((f: Record<string, unknown>) => ({
-              from: String(f.from || "").trim(),
-              to: String(f.to || "").trim(),
-              role: LINK_ROLES.includes(f.role as LinkRole) ? (f.role as LinkRole) : "calls",
-              protocol: LINK_PROTOCOLS.includes(f.protocol as LinkProtocol)
-                ? (f.protocol as LinkProtocol)
-                : undefined,
-              status: (f.status === "existing" ? "existing" : "proposed") as "existing" | "proposed",
-            }))
-            .filter((f: AiFlow) => f.from && f.to && f.from !== f.to)
-        : []
-
-      const delivers = {
-        capabilities: toStringArray(parsed?.delivers?.capabilities),
-      }
-
-      // A starter "main" process sequence, grounded on the proposed members
-      // (existing ids + new components by slug). The composer applies it only
-      // when it has no processes yet, so it's safe to always return.
-      // canonicalId → display name; and a resolver mapping any candidate the
-      // model might emit (existing id, new-component slug, or new-component
-      // name) to the canonical member id.
-      const memberNames = new Map<string, string>()
-      const memberResolve = new Map<string, string>()
-      for (const m of members) {
-        memberNames.set(m.component, compName.get(m.component) || m.component)
-        memberResolve.set(m.component.toLowerCase(), m.component)
-      }
-      for (const n of newComponents) {
-        const cid = slugifyId(n.name)
-        if (!cid) continue
-        memberNames.set(cid, n.name)
-        memberResolve.set(cid.toLowerCase(), cid)
-        memberResolve.set(n.name.toLowerCase(), cid)
-      }
-      const process = coerceProcess(parsed.process, memberResolve, memberNames)
-
-      // Suggested goal/description — the composer applies these only when
-      // its fields are still empty, so it's safe to always return them.
-      const goal = typeof parsed.goal === "string" ? parsed.goal.trim().slice(0, 240) : ""
-      const description =
-        typeof parsed.description === "string" ? parsed.description.trim().slice(0, 4000) : ""
-
-      getLogger().info("AI solution compose", {
-        members: members.length,
-        newComponents: newComponents.length,
-        flows: flows.length,
-      })
-
-      return NextResponse.json({ goal, description, delivers, members, newComponents, flows, process })
-    } catch (error) {
-      getLogger().error("AI solution compose failed", {
-        err: error instanceof Error ? error.message : "Unknown error",
-      })
-      return NextResponse.json(
-        { error: `AI compose failed: ${error instanceof Error ? error.message : "Unknown error"}` },
-        { status: 500 }
-      )
-    }
+    const jobId = startAiJob("AI solution compose", () => compose(body))
+    return NextResponse.json({ jobId })
   })
+}
+
+export async function GET(request: Request) {
+  return withRouteContext(request, async () => {
+    const jobId = new URL(request.url).searchParams.get("jobId")
+    if (!jobId) return NextResponse.json({ error: "Missing jobId" }, { status: 400 })
+    const job = getAiJob<ComposeResult>(jobId)
+    if (!job) {
+      return NextResponse.json({ error: "Job not found (it may have expired). Try again." }, { status: 404 })
+    }
+    return NextResponse.json({ status: job.status, result: job.result, error: job.error })
+  })
+}
+
+async function compose(body: Body): Promise<ComposeResult> {
+  const components = await listComponents()
+  const catalog = buildCatalogMarkdown(components, {
+    generatedAt: new Date().toISOString(),
+  })
+  const ids = new Set(components.map((c) => c.id))
+  const compName = new Map(components.map((c) => [c.id, c.name]))
+
+  const llm = await getLLM()
+  const composer = await getAgent("solution-composer")
+  const prompt = buildPrompt(
+    agentInstruction(composer),
+    sanitizeForPrompt(body.name || ""),
+    sanitizeForPrompt(body.goal || ""),
+    sanitizeForPrompt(body.description || ""),
+    sanitizeForPrompt((body.sourceDoc || "").slice(0, 12000)),
+    catalog
+  )
+  const raw = await llm.complete({ prompt, maxTokens: 4096 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsed = (await parseLlmJson(raw, (o) => llm.complete(o))) as Record<string, any>
+
+  // Validate / coerce against the catalog and enums. Members and
+  // flow endpoints must reference real component ids (the model is
+  // told this, but we enforce it); new components are free-form.
+  const newComponents: AiNewComponent[] = Array.isArray(parsed.newComponents)
+    ? parsed.newComponents
+        .filter((n: unknown) => n && typeof n === "object")
+        .map((n: Record<string, unknown>) => ({
+          name: String(n.name || "").trim(),
+          type: typeof n.type === "string" ? n.type : "service",
+          role: typeof n.role === "string" ? n.role : undefined,
+        }))
+        .filter((n: AiNewComponent) => n.name !== "")
+    : []
+
+  const members: AiMember[] = Array.isArray(parsed.members)
+    ? parsed.members
+        .filter((m: unknown) => m && typeof m === "object")
+        .map((m: Record<string, unknown>) => ({
+          component: String(m.component || "").trim(),
+          disposition: MEMBER_DISPOSITIONS.includes(m.disposition as MemberDisposition)
+            ? (m.disposition as MemberDisposition)
+            : "reuse",
+          role: typeof m.role === "string" ? m.role : undefined,
+        }))
+        .filter((m: AiMember) => ids.has(m.component))
+    : []
+
+  const flows: AiFlow[] = Array.isArray(parsed.flows)
+    ? parsed.flows
+        .filter((f: unknown) => f && typeof f === "object")
+        .map((f: Record<string, unknown>) => ({
+          from: String(f.from || "").trim(),
+          to: String(f.to || "").trim(),
+          role: LINK_ROLES.includes(f.role as LinkRole) ? (f.role as LinkRole) : "calls",
+          protocol: LINK_PROTOCOLS.includes(f.protocol as LinkProtocol) ? (f.protocol as LinkProtocol) : undefined,
+          status: (f.status === "existing" ? "existing" : "proposed") as "existing" | "proposed",
+        }))
+        .filter((f: AiFlow) => f.from && f.to && f.from !== f.to)
+    : []
+
+  const delivers = {
+    capabilities: toStringArray(parsed?.delivers?.capabilities),
+  }
+
+  // A starter "main" process sequence, grounded on the proposed members
+  // (existing ids + new components by slug). The composer applies it only
+  // when it has no processes yet, so it's safe to always return.
+  // canonicalId → display name; and a resolver mapping any candidate the
+  // model might emit (existing id, new-component slug, or new-component
+  // name) to the canonical member id.
+  const memberNames = new Map<string, string>()
+  const memberResolve = new Map<string, string>()
+  for (const m of members) {
+    memberNames.set(m.component, compName.get(m.component) || m.component)
+    memberResolve.set(m.component.toLowerCase(), m.component)
+  }
+  for (const n of newComponents) {
+    const cid = slugifyId(n.name)
+    if (!cid) continue
+    memberNames.set(cid, n.name)
+    memberResolve.set(cid.toLowerCase(), cid)
+    memberResolve.set(n.name.toLowerCase(), cid)
+  }
+  const process = coerceProcess(parsed.process, memberResolve, memberNames)
+
+  // Suggested goal/description — the composer applies these only when
+  // its fields are still empty, so it's safe to always return them.
+  const goal = typeof parsed.goal === "string" ? parsed.goal.trim().slice(0, 240) : ""
+  const description = typeof parsed.description === "string" ? parsed.description.trim().slice(0, 4000) : ""
+
+  getLogger().info("AI solution compose", {
+    members: members.length,
+    newComponents: newComponents.length,
+    flows: flows.length,
+  })
+
+  return { goal, description, delivers, members, newComponents, flows, process }
 }
 
 function toStringArray(v: unknown): string[] {
@@ -247,11 +261,8 @@ function coerceProcess(raw: any, memberResolve: Map<string, string>, memberNames
     const to = actorIds.has(toRaw) ? toRaw : undefined
     const label = String(s.label || "").trim()
     if (!label) continue
-    const kind: ProcessStepKind = PROCESS_STEP_KINDS.includes(s.kind as ProcessStepKind)
-      ? (s.kind as ProcessStepKind)
-      : "sync"
-    const description =
-      typeof s.description === "string" && s.description.trim() ? s.description.trim() : undefined
+    const kind: ProcessStepKind = PROCESS_STEP_KINDS.includes(s.kind as ProcessStepKind) ? (s.kind as ProcessStepKind) : "sync"
+    const description = typeof s.description === "string" && s.description.trim() ? s.description.trim() : undefined
     steps.push({ from, to, label, kind, description })
   }
   if (steps.length === 0) return undefined
@@ -259,7 +270,6 @@ function coerceProcess(raw: any, memberResolve: Map<string, string>, memberNames
   const name = String(raw.name || "Main process").trim() || "Main process"
   return { id: slugifyId(name) || "main-process", name, actors, steps }
 }
-
 
 function buildPrompt(
   lead: string,
