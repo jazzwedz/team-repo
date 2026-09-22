@@ -34,6 +34,7 @@ import { getDocStructure } from "./dsd-structure-store"
 import { leadIdFor, docLabel, docShort } from "./doc-sections"
 import type { DocKind } from "./doc-kinds"
 import { fsSeeds, renderFsSeedFacts, ruleDetail, generateUseCasesChapter } from "./fs-usecases"
+import { splitChapters, normTitle, ensureHeading, findMissing, writerBudget } from "./doc-chapters"
 
 // ----------------------------- job store -----------------------------
 
@@ -277,7 +278,7 @@ function buildDirectives(o: DsdOptions): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runQuickDsd(id: string, solution: Solution, facts: string, llm: any, directives: string, structure: DsdStructure, kind: DocKind): Promise<DsdResult> {
   setPhase(id, "drafting")
-  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, structure, undefined, directives, kind), maxTokens: 4096 })
+  let draft: string = await llm.complete({ prompt: draftPrompt(solution, facts, structure, undefined, directives, kind), maxTokens: 8192 })
   let iterations = 0
   for (let i = 0; i < 2; i++) {
     setPhase(id, "reviewing", { iterations })
@@ -286,7 +287,7 @@ async function runQuickDsd(id: string, solution: Solution, facts: string, llm: a
     if (verdict.ok || verdict.issues.length === 0) break
     iterations++
     setPhase(id, "revising", { iterations })
-    draft = await llm.complete({ prompt: revisePrompt(facts, draft, verdict.issues, undefined, directives, kind), maxTokens: 4096 })
+    draft = await llm.complete({ prompt: revisePrompt(facts, draft, verdict.issues, undefined, directives, kind), maxTokens: 8192 })
   }
   return { markdown: draft, iterations }
 }
@@ -415,9 +416,33 @@ async function runTeamDsd(
         writerOut = (
           await llm.complete({
             prompt: sectionWriterPrompt(g, facts, inst(writers[i]), exemplars.get(g.agentId), unlocked, globalLockedContext, kind),
-            maxTokens: 2200,
+            maxTokens: writerBudget(unlocked.length, options.depth),
           })
         ).trim()
+        // Chapters the writer dropped or that fell off the end of a truncated
+        // answer: write just those in a second, targeted call and append —
+        // instead of shipping "(not generated)".
+        const missing = findMissing(writerOut, unlocked)
+        if (missing.length > 0 && missing.length < unlocked.length) {
+          try {
+            const more = (
+              await llm.complete({
+                prompt: sectionWriterPrompt(g, facts, inst(writers[i]), exemplars.get(g.agentId), missing, globalLockedContext, kind),
+                maxTokens: writerBudget(missing.length, options.depth),
+              })
+            ).trim()
+            if (more) writerOut = `${writerOut}\n\n${more}`
+            getLogger().info("Doc section writer: re-wrote missing chapters", {
+              group: g.agentId,
+              missing: missing.map((c) => c.title),
+            })
+          } catch (e) {
+            getLogger().warn("Doc section writer: retry of missing chapters failed", {
+              group: g.agentId,
+              err: e instanceof Error ? e.message : String(e),
+            })
+          }
+        }
       }
       return { id: g.agentId, title: g.name, body: assembleGroupBody(provided, lockedIds, writerOut, groupChapters) }
     })
@@ -463,10 +488,10 @@ async function runTeamDsd(
         const writerOut: string = (
           await llm.complete({
             prompt: reviseSectionPrompt(g, facts, sec.body || "", issues, inst(writers[i]), unlocked, globalLockedContext, kind),
-            maxTokens: 2200,
+            maxTokens: writerBudget(unlocked.length, options.depth),
           })
         ).trim()
-        sec.body = assembleGroupBody(provided, lockedIds, writerOut, groupChapters)
+        sec.body = assembleGroupBody(provided, lockedIds, writerOut, groupChapters, sec.body)
       })
     )
   }
@@ -492,41 +517,34 @@ async function runTeamDsd(
 
 // Build a writer group's body: locked chapters verbatim (from `provided`),
 // unlocked chapters parsed out of the writer's output, all in chapter order.
+// Build a group's body from the writer's output: locked chapters verbatim,
+// written chapters re-headed with their exact titles, and — when the writer
+// dropped a chapter — the previous draft's version of it (revise) or a
+// visible placeholder (draft; the draft step retries missing chapters
+// before it gets here).
 function assembleGroupBody(
   provided: Record<string, string>,
   lockedIds: Set<string>,
   writerOut: string,
-  chapters: DsdChapter[]
+  chapters: DsdChapter[],
+  fallbackBody?: string
 ): string {
-  const blocks = writerOut ? splitChapters(writerOut) : new Map<string, string>()
+  const blocks = writerOut ? splitChapters(writerOut, chapters) : new Map<string, string>()
+  const fallback = fallbackBody ? splitChapters(fallbackBody, chapters) : new Map<string, string>()
   const unlockedCount = chapters.filter((c) => !lockedIds.has(c.id)).length
   const parts = chapters.map((c) => {
     if (lockedIds.has(c.id)) return ensureHeading(c.title, provided[c.id])
-    const block = blocks.get(normTitle(c.title))
-    if (block) return block
-    // Fallback: single unlocked chapter whose heading the model dropped.
-    if (unlockedCount === 1 && writerOut) return ensureHeading(c.title, writerOut)
+    const key = normTitle(c.title)
+    const block = blocks.get(key)
+    if (block) return ensureHeading(c.title, block)
+    // Single unlocked chapter whose heading the model dropped: the whole
+    // output is that chapter.
+    if (unlockedCount === 1 && writerOut && blocks.size === 0) return ensureHeading(c.title, writerOut)
+    const prev = fallback.get(key)
+    if (prev) return ensureHeading(c.title, prev)
     return `## ${c.title}\n\n_(not generated)_`
   })
   return parts.join("\n\n")
-}
-
-function normTitle(t: string): string {
-  return t.trim().toLowerCase().replace(/^\d+\.\s*/, "").replace(/\s+/g, " ")
-}
-
-function splitChapters(md: string): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const part of md.split(/\n(?=#{2,3}\s)/)) {
-    const m = part.match(/^#{2,3}\s+(.+)/)
-    if (m) map.set(normTitle(m[1]), part.trim().replace(/^#{3}\s/, "## "))
-  }
-  return map
-}
-
-function ensureHeading(title: string, text: string): string {
-  const body = (text || "").trim().replace(/^#{1,6}\s+.*(?:\r?\n)+/, "")
-  return `## ${title}\n\n${body}`
 }
 
 // Deterministically render the Runtime Process Flow chapter body from the
@@ -611,16 +629,31 @@ function documentControlChapter(kind: DocKind, solution: Solution, sourceDocName
       `| 1.0 | ${today} | Initial version | Analyst (Team Repository) | AI agent team |`,
     ].join("\n")
   }
+  // The FS opens like a formal specification: a reference line, the
+  // template / issue / owner block, the modifications table, the sign-off
+  // warning, referred documents, distribution and an (empty) sign-off
+  // table. Rendered with the "spec" theme in the viewer and the PDF.
+  const owner = solution.owner || "—"
   const referred = sourceDocName
     ? `| 1 | ${sourceDocName} (source requirements document) | — | — |`
     : `| 1 | Source requirements document — to be linked | — | — |`
   return [
     `## 1. Document Control`,
+    `**Reference:** ${solution.id} · **Status:** ${solution.status} · **Department / owner:** ${owner}`,
+    ``,
+    `| | |`,
+    `|---|---|`,
+    `| Template version | Functional Specification template 1.0 (Team Repository) |`,
+    `| Date issued | ${today} |`,
+    `| Owner | ${owner} |`,
+    ``,
     `**Modifications**`,
     ``,
     `| Version | Date | Author | Description |`,
     `|---------|------|--------|-------------|`,
     `| 1.0 | ${today} | Analyst (Team Repository) | Initial version — generated with the AI agent team |`,
+    ``,
+    `> **WARNING** — The commitments contained within this document, or changes to them, must be reviewed, agreed and signed off by all affected groups and individuals.`,
     ``,
     `**Referred documents**`,
     ``,
@@ -628,13 +661,16 @@ function documentControlChapter(kind: DocKind, solution: Solution, sourceDocName
     `|----|----------|---------|------|`,
     referred,
     ``,
-    `**People involved**`,
+    `**Distribution**`,
     ``,
     `| Name | Department | Role |`,
     `|------|------------|------|`,
-    `| ${solution.owner || "—"} | — | Solution owner |`,
+    `| ${owner} | — | Solution owner |`,
+    `| — | — | Business owner |`,
+    `| — | — | Development |`,
+    `| — | — | Test |`,
     ``,
-    `**Sign-off** — the commitments in this document must be reviewed, agreed and signed off by all affected groups.`,
+    `**Sign-off**`,
     ``,
     `| Role | Name | Date | Signature |`,
     `|------|------|------|-----------|`,
@@ -1270,7 +1306,7 @@ function sectionWriterPrompt(
     : ""
   return `${instruction}
 
-Write ONLY your assigned chapters of a ${docLabel(kind)}, grounded STRICTLY in the verified facts. Output each chapter with its exact "## N. Title" heading, in order, and nothing else — no document title, no other chapters.
+Write ONLY your assigned chapters of a ${docLabel(kind)}, grounded STRICTLY in the verified facts. Output each chapter with its exact "## N. Title" heading, in order, and nothing else — no document title, no other chapters. Write ALL of your chapters: if space is short, make each chapter shorter rather than leaving one out. Use "###" only for sub-sections inside a chapter.
 
 YOUR CHAPTERS:
 ${chapters}

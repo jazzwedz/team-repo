@@ -7,6 +7,44 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.42.2] — 2026-09-22
+
+### Changed
+
+- **FS looks like a specification.** The generated FS now opens with a
+  cover-style Document Control chapter (reference line, template /
+  issue-date / owner block, modifications table, the sign-off WARNING
+  as a callout, referred documents, distribution and an empty sign-off
+  table) and is rendered with a new **"spec" document theme** in the
+  viewer and in Save as PDF: title block with an accent bar, chapter
+  headings underlined in the accent colour, tables with an accent header
+  rule and zebra rows, blockquotes as warning callouts. The DSD keeps its
+  technical look (`theme` prop on `GeneratedDocModal`).
+- **"User interface & messages" has a fixed structure.** Instead of a
+  free paragraph, each use case's UI block is up to three tables —
+  *Screens* (Screen | Change), *Fields* (Field | Type | Mandatory |
+  Default | Allowed values | Editable by), *Labels & messages* (Key |
+  Text | Shown when) — present only when the facts or the source
+  document specify them, otherwise exactly "No screen change
+  specified." (writer prompt, chapter guidance and fallback aligned).
+
+### Fixed
+
+- **Generated documents missing whole parts.** Two causes, both hit the FS
+  hard: (1) the chapter splitter cut the writer's output on `###` as well
+  as `##` and promoted every `###` to a chapter, so everything below a
+  chapter's first sub-heading was thrown away — and the FS is built on
+  sub-headings (`### UC-NN`, `### RG-NN`, data objects); (2) a flat
+  2200-token budget per writer group truncated groups of three or four
+  table-heavy chapters, so the last ones never arrived and showed as
+  "(not generated)". Now: split on `##` only (an expected chapter title
+  written as `###` is still recognised), chapter titles matched loosely
+  (number, `&`/`and`, punctuation), the budget scales with the number of
+  chapters (and the chosen depth), chapters missing after the first call
+  are written in a second targeted call, a revision that drops a chapter
+  keeps the previous version, and quick mode gets 8192 tokens. New
+  `src/lib/doc-chapters.ts`.
+
 ## [0.42.1] — 2026-09-22
 
 ### Fixed

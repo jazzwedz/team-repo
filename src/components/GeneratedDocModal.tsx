@@ -23,6 +23,50 @@ import { MermaidPreview } from "@/components/mermaid-preview"
 const DOC_PROSE =
   "max-w-none [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:border-b-2 [&_h1]:border-gray-800 [&_h1]:pb-2 [&_h1]:mb-4 [&_h1]:text-gray-900 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-gray-300 [&_h2]:pb-1 [&_h2]:text-gray-800 [&_h3]:text-base [&_h3]:font-bold [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-gray-700 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:my-2 [&_p]:text-gray-700 [&_ul]:pl-6 [&_ul]:my-2 [&_ol]:pl-6 [&_ol]:my-2 [&_li]:text-sm [&_li]:my-1 [&_li]:text-gray-700 [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:text-gray-800 [&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-sm [&_th]:font-semibold [&_td]:border [&_td]:border-gray-300 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_strong]:font-semibold [&_strong]:text-gray-900 [&_hr]:my-4 [&_hr]:border-gray-200"
 
+// "spec" theme — the look of a formal specification document: a title
+// block with a colour accent bar, chapter headings underlined in the
+// accent colour, tables with an accent header rule and zebra rows, and
+// blockquotes rendered as a warning callout (used for the sign-off
+// warning on the cover). Same markdown, different clothes.
+const SPEC_PROSE =
+  "max-w-none [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:border-l-8 [&_h1]:border-red-700 [&_h1]:pl-4 [&_h1]:py-1 [&_h1]:mb-6 [&_h1]:text-gray-900 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:border-b-2 [&_h2]:border-red-700 [&_h2]:pb-1 [&_h2]:text-gray-900 [&_h3]:text-base [&_h3]:font-bold [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-red-800 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:my-2 [&_p]:text-gray-700 [&_ul]:pl-6 [&_ul]:my-2 [&_ol]:pl-6 [&_ol]:my-2 [&_li]:text-sm [&_li]:my-1 [&_li]:text-gray-700 [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:text-gray-800 [&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border-0 [&_th]:border-b-2 [&_th]:border-red-700 [&_th]:bg-transparent [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wide [&_th]:font-semibold [&_th]:text-gray-700 [&_td]:border-0 [&_td]:border-b [&_td]:border-gray-200 [&_td]:px-3 [&_td]:py-1.5 [&_td]:text-sm [&_td]:align-top [&_tbody_tr:nth-child(odd)]:bg-gray-50 [&_strong]:font-semibold [&_strong]:text-gray-900 [&_em]:not-italic [&_em]:font-semibold [&_em]:text-gray-600 [&_hr]:my-6 [&_hr]:border-red-200 [&_blockquote]:border-l-4 [&_blockquote]:border-red-700 [&_blockquote]:bg-red-50 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-4 [&_blockquote]:not-italic [&_blockquote_p]:text-red-900 [&_blockquote_p]:my-1"
+
+export type DocTheme = "default" | "spec"
+
+// Print (Save as PDF) stylesheet per theme — mirrors the on-screen look.
+function printCss(theme: DocTheme): string {
+  const base =
+    `body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;color:#1f2937;max-width:820px;margin:24px auto;padding:0 24px;line-height:1.55}` +
+    `p,li{font-size:13.5px}` +
+    `table{width:100%;border-collapse:collapse;margin:12px 0}` +
+    `code{background:#f3f4f6;padding:2px 4px;border-radius:3px;font-size:12px}` +
+    `pre{background:#f3f4f6;padding:12px;border-radius:6px;overflow:auto}` +
+    `svg{max-width:100%;height:auto}` +
+    `h2,h3{page-break-after:avoid}table,pre,blockquote{page-break-inside:avoid}`
+  if (theme === "spec") {
+    return (
+      base +
+      `h1{font-size:30px;font-weight:800;letter-spacing:-0.01em;border-left:10px solid #b91c1c;padding:4px 0 4px 16px;margin:0 0 24px}` +
+      `h2{font-size:20px;border-bottom:2px solid #b91c1c;padding-bottom:4px;margin-top:30px}` +
+      `h3{font-size:15px;color:#991b1b;margin-top:22px}` +
+      `th{border:0;border-bottom:2px solid #b91c1c;padding:5px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:left;color:#374151}` +
+      `td{border:0;border-bottom:1px solid #e5e7eb;padding:5px 10px;font-size:12.5px;vertical-align:top}` +
+      `tbody tr:nth-child(odd){background:#f9fafb}` +
+      `em{font-style:normal;font-weight:600;color:#4b5563}` +
+      `hr{border:0;border-top:1px solid #fecaca;margin:24px 0}` +
+      `blockquote{border-left:4px solid #b91c1c;background:#fef2f2;margin:16px 0;padding:8px 16px}blockquote p{color:#7f1d1d;margin:4px 0}`
+    )
+  }
+  return (
+    base +
+    `h1{font-size:24px;border-bottom:2px solid #1f2937;padding-bottom:6px;margin-top:0}` +
+    `h2{font-size:20px;border-bottom:1px solid #d1d5db;padding-bottom:4px;margin-top:26px}` +
+    `h3{font-size:16px;margin-top:20px}` +
+    `th,td{border:1px solid #d1d5db;padding:6px 10px;font-size:12.5px;text-align:left}` +
+    `th{background:#f3f4f6}`
+  )
+}
+
 const MD_COMPONENTS: Components = {
   code({ className, children, ...props }) {
     const isMermaid = /language-mermaid/.test(className || "")
@@ -79,6 +123,8 @@ interface Props {
    *  is re-derived server-side, so it isn't hand-edited. onSave returns an
    *  error string or void. */
   editable?: { onSave: (markdown: string) => Promise<string | void>; busy?: boolean }
+  /** Visual theme: "default" (technical doc) or "spec" (formal specification look). */
+  theme?: DocTheme
 }
 
 function escapeHtml(s: string): string {
@@ -87,7 +133,8 @@ function escapeHtml(s: string): string {
   )
 }
 
-export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, publish, feedback, editable }: Props) {
+export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, publish, feedback, editable, theme = "default" }: Props) {
+  const prose = theme === "spec" ? SPEC_PROSE : DOC_PROSE
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -174,19 +221,7 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
     if (!w) return
     w.document.write(
       `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
-        `<style>` +
-        `body{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;color:#1f2937;max-width:820px;margin:24px auto;padding:0 24px;line-height:1.55}` +
-        `h1{font-size:24px;border-bottom:2px solid #1f2937;padding-bottom:6px;margin-top:0}` +
-        `h2{font-size:20px;border-bottom:1px solid #d1d5db;padding-bottom:4px;margin-top:26px}` +
-        `h3{font-size:16px;margin-top:20px}` +
-        `p,li{font-size:13.5px}` +
-        `table{width:100%;border-collapse:collapse;margin:12px 0}` +
-        `th,td{border:1px solid #d1d5db;padding:6px 10px;font-size:12.5px;text-align:left}` +
-        `th{background:#f3f4f6}` +
-        `code{background:#f3f4f6;padding:2px 4px;border-radius:3px;font-size:12px}` +
-        `pre{background:#f3f4f6;padding:12px;border-radius:6px;overflow:auto}` +
-        `svg{max-width:100%;height:auto}` +
-        `</style></head><body>${html}</body></html>`
+        `<style>${printCss(theme)}</style></head><body>${html}</body></html>`
     )
     w.document.close()
     w.focus()
@@ -349,7 +384,7 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
                   onChange={(e) => setDraft(e.target.value)}
                   className="h-full min-h-[50vh] font-mono text-xs bg-white"
                 />
-                <div className={`h-full overflow-y-auto rounded-md border p-3 bg-white ${DOC_PROSE}`}>
+                <div className={`h-full overflow-y-auto rounded-md border p-3 bg-white ${prose}`}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
                     {draft || "_Nothing to preview yet._"}
                   </ReactMarkdown>
@@ -365,7 +400,7 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
           </div>
         ) : (
         <div className="flex-1 overflow-y-auto px-8 py-6 bg-white">
-          <div ref={contentRef} className={DOC_PROSE}>
+          <div ref={contentRef} className={prose}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
               {markdown || ""}
             </ReactMarkdown>

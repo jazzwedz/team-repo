@@ -806,6 +806,7 @@ export default function SolutionDetailPage() {
         onOpenChange={setShowDocModal}
         title={artifacts.find((a) => a.id === currentArtifactId)?.title || solution.name}
         badge={DOC_KINDS[docKind].label}
+        theme={docKind === "fs" ? "spec" : "default"}
         markdown={generated || ""}
         feedback={
           currentArtifactId
