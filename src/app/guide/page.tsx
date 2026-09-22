@@ -13,6 +13,10 @@ import {
   CheckCircle2,
   Lightbulb,
   PencilRuler,
+  FileText,
+  Bot,
+  Settings,
+  Share2,
 } from "lucide-react"
 
 export const metadata = {
@@ -30,10 +34,43 @@ export default function GuidePage() {
         </div>
         <h1 className="text-3xl font-bold">Welcome to the Team Repository</h1>
         <p className="text-muted-foreground text-lg">
-          One living picture of our architecture — the building blocks we have,
-          and the solutions we assemble from them. Here&apos;s how to work with it.
+          One living, versioned picture of our architecture — the building blocks
+          we have, the solutions we assemble from them, and the documentation that
+          comes out of it. Here&apos;s how to work with it.
         </p>
       </header>
+
+      {/* the model */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">How the pieces relate</h2>
+        <p className="text-sm text-muted-foreground">
+          <strong>Components</strong> are the building blocks and are linked to
+          each other directly (calls, reads-from, writes-to, part-of…). A{" "}
+          <strong>Solution</strong> doesn&apos;t own components — it{" "}
+          <em>uses</em> them, marking each one as new, reuse, extend or external.
+          The same component can serve many solutions.
+        </p>
+        <div className="rounded-lg border bg-white p-3">
+          <RelationshipDiagram />
+        </div>
+        <ul className="grid gap-2 sm:grid-cols-3 text-xs text-muted-foreground">
+          <li className="rounded-md border p-2.5 bg-white">
+            <strong className="text-foreground">Membership</strong> (dashed) — the
+            solution uses the component, with a disposition: new, reuse, extend or
+            external.
+          </li>
+          <li className="rounded-md border p-2.5 bg-white">
+            <strong className="text-foreground">Links</strong> (solid) — how
+            components talk to each other. They live on the component, so every
+            solution sees the same wiring.
+          </li>
+          <li className="rounded-md border p-2.5 bg-white">
+            <strong className="text-foreground">Shared components</strong> — here
+            Customer Service and Customer DB serve both solutions. Improve them
+            once, both benefit.
+          </li>
+        </ul>
+      </section>
 
       {/* the workflow */}
       <section className="space-y-4">
@@ -45,8 +82,9 @@ export default function GuidePage() {
             title="Start with a Solution"
             body={
               <>
-                Describe what you&apos;re building — a goal and a short
-                description. The tool (and AI assist) proposes which{" "}
+                Give it a name — optionally a goal, description or an uploaded
+                source document (BRD). <strong>Pre-fill with AI</strong> proposes
+                the goal, the capabilities it delivers and which{" "}
                 <strong>existing</strong> components could make it happen. You
                 compose, you don&apos;t start from a blank page.
               </>
@@ -58,22 +96,24 @@ export default function GuidePage() {
             title="Check the components"
             body={
               <>
-                Look at the proposed components. Do they actually do what you
-                need? Mark each one <em>reuse</em> (it&apos;s fine as-is) or{" "}
-                <em>extend</em> (it needs changes).
+                Do the proposed components actually do what you need? Mark each
+                one <em>reuse</em> (fine as-is), <em>extend</em> (needs changes) or{" "}
+                <em>external</em>. Missing a piece? Add it as a{" "}
+                <strong>new component</strong> — it&apos;s created as a draft.
               </>
             }
           />
           <Step
             n={3}
-            icon={<ComponentIcon className="h-5 w-5" />}
-            title="Missing something? Create a new component"
+            icon={<Workflow className="h-5 w-5" />}
+            title="Wire the flows and model the process"
             body={
               <>
-                If a piece doesn&apos;t exist yet, add it as a{" "}
-                <strong>new component</strong> — name it however makes sense to
-                you. It&apos;s created as a draft for you to flesh out. Rough is
-                fine; you&apos;re sketching the shape.
+                Accept the existing links between members, add proposed flows, and
+                describe how the solution runs a process step by step (actor →
+                target). <strong>AI draft</strong> routes each step to the
+                component that carries it. The Review step shows a summary with
+                both the architecture and the sequence diagram.
               </>
             }
           />
@@ -83,13 +123,25 @@ export default function GuidePage() {
             title="Put the detail on the component"
             body={
               <>
-                This is the important one. A solution{" "}
-                <strong>wires components together</strong> and models how they
-                run a process (the Processes tab). The component-level detail —
-                business logic, rules, calculations, NFRs, capabilities — lives{" "}
-                <strong>on the component itself</strong>. Open the component and
-                add it there (you can even import rules from a document or code
-                with AI).
+                This is the important one. Business logic, rules, calculations,
+                NFRs and capabilities live <strong>on the component itself</strong>.
+                Use <strong>Import rules</strong> to extract them with AI from a
+                PDF, an Excel (.xlsx) sheet, a Confluence page or source code — the
+                documents you import from are kept with the component.
+              </>
+            }
+          />
+          <Step
+            n={5}
+            icon={<FileText className="h-5 w-5" />}
+            title="Generate the DSD"
+            body={
+              <>
+                On the solution, <strong>Generate DSD</strong> — a team of AI
+                writers, critics and a lead produces a Detailed Solution
+                Description grounded in the catalog, your source documents and
+                (optionally) the real source code. Review it, give feedback, and{" "}
+                <strong>publish it to Confluence</strong> with its diagrams.
               </>
             }
           />
@@ -113,23 +165,23 @@ export default function GuidePage() {
           <StructureCard
             href="/"
             icon={<ComponentIcon className="h-5 w-5 text-indigo-600" />}
-            title="Components"
+            title="Catalog (Components)"
             what="The building blocks — services, databases, frontends, queues, contexts…"
-            why="Each one is the single source of truth for its links to others, its capabilities, business rules and NFRs. Everything else is built on top of these."
+            why="Each one is the single source of truth for its links, capabilities, business rules and NFRs, optionally mapped to its source code. Tabs: Overview, Properties, Rules & Calculations, Blast Radius, Documentation, Diagrams, History."
           />
           <StructureCard
             href="/solutions"
             icon={<Boxes className="h-5 w-5 text-blue-600" />}
             title="Solutions"
             what="A new offering composed from existing components (the “to-be”)."
-            why="Pick what to reuse, fill the gaps with new components, describe how they interact — then generate a Detailed Solution Description. Components stay clean; one component can serve many solutions."
+            why="Members with dispositions, flows, process sequences and stored source documents — plus the DSD library generated from them and their Confluence pages."
           />
           <StructureCard
             href="/processes"
             icon={<Workflow className="h-5 w-5 text-emerald-600" />}
             title="Processes"
             what="A cross-cutting index of every process modelled across solutions."
-            why="A process is an editable step-by-step sequence on a solution. This page derives, for each one, its participants (with roles) and which solutions model it — great for 'what-runs-what' questions."
+            why="For each process: its participants (with roles) and which solutions model it — great for 'what-runs-what' questions."
           />
           <StructureCard
             href="/diagrams"
@@ -138,6 +190,39 @@ export default function GuidePage() {
             what="Visual maps — the architecture overview and saved diagrams."
             why="The overview nests components by hierarchy (context ⊃ services ⊃ modules) and draws the real links between them. The picture, straight from the data."
           />
+          <StructureCard
+            href="/agents"
+            icon={<Bot className="h-5 w-5 text-rose-600" />}
+            title="Agents"
+            what="The AI team behind the tool — DSD writers, critics, lead and the assistants."
+            why="Every agent is trainable: your ratings and corrections feed a coach that proposes prompt improvements you approve."
+          />
+          <StructureCard
+            href="/settings"
+            icon={<Settings className="h-5 w-5 text-slate-600" />}
+            title="Settings"
+            what="Health Checks · DSD Output · UI Configuration · Application Settings."
+            why="Test the connections, fine-tune which chapters the DSD contains, hide blocks you don't use, and manage the app configuration (secrets stay masked and local)."
+          />
+        </div>
+      </section>
+
+      {/* AI helpers */}
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold">AI helpers along the way</h2>
+        <p className="text-sm text-muted-foreground">
+          AI always proposes — you review and approve. Nothing is written until
+          you say so.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 text-sm">
+          <Helper title="Solution pre-fill" body="Goal, capabilities, members and flows from a name or a BRD." />
+          <Helper title="Process draft" body="A step-by-step sequence routed through the components that carry each step." />
+          <Helper title="Rules import" body="Rules and calculations from PDF, Excel, Confluence or code — at fine granularity." />
+          <Helper title="Catalog Curator" body="Reads a document and proposes grounded, page-cited updates to existing components." />
+          <Helper title="Consistency check" body="Finds missing links between components (AI or deterministic)." />
+          <Helper title="Code awareness" body="Maps components to source files and compares documented rules with what the code does." />
+          <Helper title="DSD generation" body="An agent team writes, critiques and consolidates the Detailed Solution Description." />
+          <Helper title="Confluence sync" body="Publish components and DSDs; pull edits back as field-level proposals." />
         </div>
       </section>
 
@@ -146,10 +231,11 @@ export default function GuidePage() {
         <h2 className="text-xl font-semibold">Your first 15 minutes</h2>
         <ol className="space-y-2 text-sm">
           <Tick>Browse the <Link href="/" className="underline">Catalog</Link> — see what components already exist.</Tick>
-          <Tick>Open one component — look at its Links, Rules and Properties tabs.</Tick>
+          <Tick>Open one component — look at its Overview, Properties and Rules &amp; Calculations tabs.</Tick>
           <Tick>Create a <Link href="/solutions/new" className="underline">new Solution</Link> for something you&apos;re working on — try <strong>Pre-fill with AI</strong>.</Tick>
-          <Tick>Review the proposed components; add a new one if something&apos;s missing.</Tick>
-          <Tick>Open a new/changed component and start adding its rules and logic.</Tick>
+          <Tick>Review the proposed components; add a new one if something&apos;s missing, then model the main process.</Tick>
+          <Tick>Open a new or changed component and import its rules from a document.</Tick>
+          <Tick>Back on the solution, generate the DSD and publish it to Confluence.</Tick>
         </ol>
         <div className="flex gap-3 pt-2">
           <Link
@@ -168,6 +254,153 @@ export default function GuidePage() {
         </div>
       </section>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Relationship diagram — two example solutions (top) using components (row),
+// which are linked to each other (arcs below). Static inline SVG with
+// generic example names.
+// ---------------------------------------------------------------------------
+
+const COMPONENTS = [
+  { id: "portal", name: "Web Portal", type: "frontend", x: 16 },
+  { id: "cust", name: "Customer Service", type: "service", x: 140 },
+  { id: "notif", name: "Notification Service", type: "service", x: 264 },
+  { id: "db", name: "Customer DB", type: "database", x: 388 },
+  { id: "billing", name: "Billing Service", type: "service", x: 512 },
+  { id: "pay", name: "Payment Gateway", type: "external", x: 636 },
+]
+const BOX_W = 110
+const ROW_Y = 200
+const SHARED = new Set(["cust", "db"])
+const cx = (id: string) => COMPONENTS.find((c) => c.id === id)!.x + BOX_W / 2
+
+const SOLUTIONS: { name: string; x: number; color: string; members: [string, string][] }[] = [
+  {
+    name: "Customer Self-Service",
+    x: 60,
+    color: "#2563eb",
+    members: [
+      ["portal", "new"],
+      ["cust", "extend"],
+      ["notif", "reuse"],
+      ["db", "reuse"],
+    ],
+  },
+  {
+    name: "Billing Revamp",
+    x: 430,
+    color: "#7c3aed",
+    members: [
+      ["cust", "reuse"],
+      ["db", "reuse"],
+      ["billing", "new"],
+      ["pay", "external"],
+    ],
+  },
+]
+
+// [from-x, to-x, control-point y, label]
+const LINKS: [number, number, number, string][] = [
+  [cx("portal") + 4, cx("cust") - 10, 320, "calls · rest"],
+  [cx("cust") + 10, cx("notif") - 4, 320, "calls · async"],
+  [cx("cust"), cx("db") - 10, 440, "reads-from · db"],
+  [cx("billing") - 4, cx("db") + 10, 320, "writes-to · db"],
+  [cx("billing") + 10, cx("pay") - 4, 320, "calls · rest"],
+]
+
+function RelationshipDiagram() {
+  const solW = 270
+  return (
+    <svg
+      viewBox="0 0 760 420"
+      className="w-full h-auto"
+      role="img"
+      aria-label="Two solutions using shared components, and components linked to each other"
+      fontFamily="ui-sans-serif, system-ui, sans-serif"
+    >
+      <defs>
+        <marker id="g-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#475569" />
+        </marker>
+      </defs>
+
+      {/* membership lines */}
+      {SOLUTIONS.map((s) =>
+        s.members.map(([cid, disp]) => {
+          const x1 = s.x + solW / 2
+          const y1 = 76
+          const x2 = cx(cid)
+          const y2 = ROW_Y
+          const mx = (x1 + x2) / 2
+          const my = (y1 + y2) / 2
+          return (
+            <g key={`${s.name}-${cid}`}>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={s.color} strokeWidth={1.5} strokeDasharray="5 4" opacity={0.75} />
+              <rect x={mx - 25} y={my - 9} width={50} height={17} rx={8} fill="white" stroke={s.color} strokeWidth={1} />
+              <text x={mx} y={my + 3.5} textAnchor="middle" fontSize={10} fill={s.color} fontWeight={600}>
+                {disp}
+              </text>
+            </g>
+          )
+        })
+      )}
+
+      {/* solutions */}
+      {SOLUTIONS.map((s) => (
+        <g key={s.name}>
+          <rect x={s.x} y={20} width={solW} height={56} rx={10} fill={s.color} fillOpacity={0.08} stroke={s.color} strokeWidth={1.5} />
+          <text x={s.x + 14} y={42} fontSize={10} fill={s.color} fontWeight={700} letterSpacing={0.6}>
+            SOLUTION
+          </text>
+          <text x={s.x + 14} y={62} fontSize={14} fill="#0f172a" fontWeight={600}>
+            {s.name}
+          </text>
+        </g>
+      ))}
+
+      {/* component-to-component links (arcs below the row) */}
+      {LINKS.map(([x1, x2, ctrl, label], i) => {
+        const y = ROW_Y + 50
+        const mid = (x1 + x2) / 2
+        const bottom = (y + 2 * ctrl + y) / 4
+        return (
+          <g key={i}>
+            <path d={`M${x1},${y} Q${mid},${ctrl} ${x2},${y}`} fill="none" stroke="#475569" strokeWidth={1.5} markerEnd="url(#g-arrow)" />
+            <text x={mid} y={bottom + 14} textAnchor="middle" fontSize={10} fill="#475569">
+              {label}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* components */}
+      {COMPONENTS.map((c) => {
+        const shared = SHARED.has(c.id)
+        return (
+          <g key={c.id}>
+            <rect x={c.x} y={ROW_Y} width={BOX_W} height={50} rx={8} fill="white" stroke={shared ? "#0f172a" : "#94a3b8"} strokeWidth={shared ? 2 : 1.2} />
+            <text x={c.x + BOX_W / 2} y={ROW_Y + 21} textAnchor="middle" fontSize={11} fill="#0f172a" fontWeight={600}>
+              {c.name}
+            </text>
+            <text x={c.x + BOX_W / 2} y={ROW_Y + 37} textAnchor="middle" fontSize={10} fill="#64748b">
+              {c.type}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* legend */}
+      <g fontSize={10} fill="#475569">
+        <line x1={20} y1={405} x2={48} y2={405} stroke="#2563eb" strokeWidth={1.5} strokeDasharray="5 4" />
+        <text x={54} y={408}>solution uses component (disposition)</text>
+        <line x1={280} y1={405} x2={308} y2={405} stroke="#475569" strokeWidth={1.5} markerEnd="url(#g-arrow)" />
+        <text x={316} y={408}>link between components (role · protocol)</text>
+        <rect x={560} y={398} width={22} height={14} rx={3} fill="white" stroke="#0f172a" strokeWidth={2} />
+        <text x={588} y={408}>shared by both solutions</text>
+      </g>
+    </svg>
   )
 }
 
@@ -222,6 +455,18 @@ function StructureCard({
       <p className="text-sm text-foreground/80">{what}</p>
       <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{why}</p>
     </Link>
+  )
+}
+
+function Helper({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-md border p-3 bg-white flex items-start gap-2">
+      <Share2 className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+      <div>
+        <div className="font-medium">{title}</div>
+        <div className="text-xs text-muted-foreground">{body}</div>
+      </div>
+    </div>
   )
 }
 

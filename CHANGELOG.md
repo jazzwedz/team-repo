@@ -7,6 +7,19 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.2] — 2026-09-22
+
+### Changed
+
+- **Guide refreshed for the current functionality.** New “How the pieces
+  relate” section with a diagram showing solutions using components
+  (membership + disposition), components linked to each other (role ·
+  protocol) and components shared across solutions. The flow now covers
+  process modelling, rules import (PDF/Excel/Confluence/code) and DSD
+  generation + Confluence publish; the repo map adds Agents and Settings;
+  a new “AI helpers” section lists what AI proposes along the way.
+
+
 ## [0.40.1] — 2026-09-02
 
 ### Fixed
