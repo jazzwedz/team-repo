@@ -77,6 +77,8 @@ interface AiCompose {
   flows: SolutionFlow[]
   /** Optional starter "main" process sequence (applied only when empty). */
   process?: SolutionProcess
+  /** Why nothing was proposed — set by the route when the proposal is empty. */
+  diagnostics?: string
 }
 
 export default function NewSolutionPage() {
@@ -1190,7 +1192,7 @@ export default function NewSolutionPage() {
               </ul>
               {aiResult.members.length === 0 && aiResult.newComponents.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Nothing concrete matched — try a richer description.
+                  {aiResult.diagnostics || "Nothing concrete matched — try a richer description."}
                 </p>
               )}
             </div>
@@ -1200,6 +1202,9 @@ export default function NewSolutionPage() {
             <Button variant="outline" onClick={() => setAiOpen(false)} disabled={aiLoading}>
               Cancel
             </Button>
+            {!aiLoading && !aiError && aiResult && aiResult.members.length === 0 && aiResult.newComponents.length === 0 && (
+              <Button variant="outline" onClick={runAi}>Retry</Button>
+            )}
             {!aiLoading && !aiError && aiResult && (
               <Button onClick={() => applyAi(aiResult)}>Apply</Button>
             )}

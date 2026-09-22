@@ -14,7 +14,7 @@
 
 import { NextResponse } from "next/server"
 import { listComponents } from "@/lib/github"
-import { buildCatalogMarkdown } from "@/lib/catalog-export"
+import { buildCompactCatalog } from "@/lib/catalog-compact"
 import { getLLM, isLLMConfigured, LLM_DISABLED_MESSAGE } from "@/lib/llm"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { sanitizeForPrompt } from "@/lib/validate"
@@ -76,6 +76,9 @@ export interface ComposeResult {
   newComponents: AiNewComponent[]
   flows: AiFlow[]
   process?: SolutionProcess
+  /** Set when the model proposed nothing usable (even after one retry):
+   *  what happened, for the analyst. */
+  diagnostics?: string
 }
 
 export async function POST(request: Request) {
@@ -120,13 +123,35 @@ export async function GET(request: Request) {
   })
 }
 
+// A proposal without any members or new components is never right — a
+// solution is realised by components. With a large catalog the model
+// occasionally answers with a near-empty skeleton (observed: a 175k-char
+// prompt answered in ~1.2k chars with empty arrays), which the wizard then
+// showed as a silent "nothing proposed". So: compact catalog, one retry
+// that restates the requirement, and a diagnostics line when it still
+// comes back empty.
+const RETRY_CLAUSE = `
+
+IMPORTANT — your previous answer proposed NO members and NO new components. That is never acceptable: a solution is realised by components. Re-read the catalog and pick the components that would plausibly realise this solution — reuse or extend them, by their EXACT backticked id. Put every part the catalog lacks into newComponents. If nothing in the catalog is relevant, newComponents must still list the components a solution like this needs. Wire the flows and write the process. Return the full JSON.`
+
+interface Proposal {
+  goal: string
+  description: string
+  delivers: { capabilities: string[] }
+  members: AiMember[]
+  newComponents: AiNewComponent[]
+  flows: AiFlow[]
+  process?: SolutionProcess
+  /** Member references the model emitted that matched no catalog id / name. */
+  dropped: string[]
+  responseChars: number
+}
+
+const isEmptyProposal = (p: Proposal) => p.members.length === 0 && p.newComponents.length === 0
+
 async function compose(body: Body): Promise<ComposeResult> {
   const components = await listComponents()
-  const catalog = buildCatalogMarkdown(components, {
-    generatedAt: new Date().toISOString(),
-  })
-  const ids = new Set(components.map((c) => c.id))
-  const compName = new Map(components.map((c) => [c.id, c.name]))
+  const catalog = buildCompactCatalog(components)
 
   const llm = await getLLM()
   const composer = await getAgent("solution-composer")
@@ -138,18 +163,95 @@ async function compose(body: Body): Promise<ComposeResult> {
     sanitizeForPrompt((body.sourceDoc || "").slice(0, 12000)),
     catalog
   )
-  const raw = await llm.complete({ prompt, maxTokens: 4096 })
+
+  let proposal = await propose(llm, prompt, components)
+  let retried = false
+  if (isEmptyProposal(proposal)) {
+    getLogger().warn("AI solution compose: empty proposal — retrying once", {
+      responseChars: proposal.responseChars,
+      dropped: proposal.dropped.slice(0, 20),
+    })
+    retried = true
+    const second = await propose(llm, prompt + RETRY_CLAUSE, components)
+    second.dropped = [...proposal.dropped, ...second.dropped]
+    proposal = second
+  }
+
+  const diagnostics = isEmptyProposal(proposal)
+    ? [
+        `The model proposed no members and no new components${retried ? ", also after a retry" : ""} (answer: ${proposal.responseChars} characters).`,
+        proposal.dropped.length
+          ? `${proposal.dropped.length} proposed member reference(s) matched no catalog id or name: ${Array.from(new Set(proposal.dropped)).slice(0, 6).join(", ")}.`
+          : "",
+        "Add a goal, a description or a source document and try again.",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : undefined
+
+  getLogger().info("AI solution compose", {
+    members: proposal.members.length,
+    newComponents: proposal.newComponents.length,
+    flows: proposal.flows.length,
+    retried,
+    dropped: proposal.dropped.length,
+    responseChars: proposal.responseChars,
+  })
+
+  const { goal, description, delivers, members, newComponents, flows, process } = proposal
+  return { goal, description, delivers, members, newComponents, flows, process, diagnostics }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function propose(llm: any, prompt: string, components: { id: string; name: string }[]): Promise<Proposal> {
+  const raw: string = await llm.complete({ prompt, maxTokens: 6000 })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parsed = (await parseLlmJson(raw, (o) => llm.complete(o))) as Record<string, any>
+  const proposal = coerceProposal(parsed, components, raw.length)
+  if (isEmptyProposal(proposal)) {
+    // The llm_call log line carries the whole prompt and gets truncated by
+    // log shippers, so the answer itself would be lost — keep its head here.
+    getLogger().warn("AI solution compose: nothing usable in the answer", {
+      responseChars: raw.length,
+      keys: Object.keys(parsed),
+      rawHead: raw.slice(0, 1500),
+    })
+  }
+  return proposal
+}
 
-  // Validate / coerce against the catalog and enums. Members and
-  // flow endpoints must reference real component ids (the model is
-  // told this, but we enforce it); new components are free-form.
+// Validate / coerce the model's JSON against the catalog and enums.
+// Members and flow endpoints must reference real component ids — the model
+// is told this, but we enforce it, and we also accept a component's name
+// or slug (models slip into names) so a good proposal isn't thrown away.
+// New components are free-form.
+function coerceProposal(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parsed: Record<string, any>,
+  components: { id: string; name: string }[],
+  responseChars: number
+): Proposal {
+  const ids = new Set(components.map((c) => c.id))
+  const compName = new Map(components.map((c) => [c.id, c.name]))
+  const idResolve = new Map<string, string>()
+  for (const c of components) {
+    idResolve.set(c.id.toLowerCase(), c.id)
+    idResolve.set(c.name.trim().toLowerCase(), c.id)
+    const slug = slugifyId(c.name)
+    if (slug) idResolve.set(slug.toLowerCase(), c.id)
+  }
+  const resolveId = (ref: unknown): string | undefined => {
+    const r = String(ref ?? "").trim()
+    if (!r) return undefined
+    return ids.has(r) ? r : idResolve.get(r.toLowerCase())
+  }
+  const dropped: string[] = []
+
   const newComponents: AiNewComponent[] = Array.isArray(parsed.newComponents)
     ? parsed.newComponents
         .filter((n: unknown) => n && typeof n === "object")
         .map((n: Record<string, unknown>) => ({
-          name: String(n.name || "").trim(),
+          name: String(n.name || n.title || "").trim(),
           type: typeof n.type === "string" ? n.type : "service",
           role: typeof n.role === "string" ? n.role : undefined,
         }))
@@ -159,22 +261,33 @@ async function compose(body: Body): Promise<ComposeResult> {
   const members: AiMember[] = Array.isArray(parsed.members)
     ? parsed.members
         .filter((m: unknown) => m && typeof m === "object")
-        .map((m: Record<string, unknown>) => ({
-          component: String(m.component || "").trim(),
-          disposition: MEMBER_DISPOSITIONS.includes(m.disposition as MemberDisposition)
-            ? (m.disposition as MemberDisposition)
-            : "reuse",
-          role: typeof m.role === "string" ? m.role : undefined,
-        }))
-        .filter((m: AiMember) => ids.has(m.component))
+        .map((m: Record<string, unknown>) => {
+          const ref = m.component ?? m.id ?? m.name
+          const component = resolveId(ref)
+          if (!component && ref != null && String(ref).trim()) dropped.push(String(ref).trim())
+          return {
+            component: component || "",
+            disposition: MEMBER_DISPOSITIONS.includes(m.disposition as MemberDisposition)
+              ? (m.disposition as MemberDisposition)
+              : "reuse",
+            role: typeof m.role === "string" ? m.role : undefined,
+          }
+        })
+        .filter((m: AiMember) => m.component !== "")
     : []
 
+  // Flow endpoints: an existing id (or its name/slug), or a new component
+  // by name — the composer resolves new-component names to slugs itself.
+  const endpoint = (v: unknown): string => {
+    const r = String(v ?? "").trim()
+    return resolveId(r) || r
+  }
   const flows: AiFlow[] = Array.isArray(parsed.flows)
     ? parsed.flows
         .filter((f: unknown) => f && typeof f === "object")
         .map((f: Record<string, unknown>) => ({
-          from: String(f.from || "").trim(),
-          to: String(f.to || "").trim(),
+          from: endpoint(f.from ?? f.source),
+          to: endpoint(f.to ?? f.target),
           role: LINK_ROLES.includes(f.role as LinkRole) ? (f.role as LinkRole) : "calls",
           protocol: LINK_PROTOCOLS.includes(f.protocol as LinkProtocol) ? (f.protocol as LinkProtocol) : undefined,
           status: (f.status === "existing" ? "existing" : "proposed") as "existing" | "proposed",
@@ -190,13 +303,14 @@ async function compose(body: Body): Promise<ComposeResult> {
   // (existing ids + new components by slug). The composer applies it only
   // when it has no processes yet, so it's safe to always return.
   // canonicalId → display name; and a resolver mapping any candidate the
-  // model might emit (existing id, new-component slug, or new-component
-  // name) to the canonical member id.
+  // model might emit (existing id, its name, new-component slug, or
+  // new-component name) to the canonical member id.
   const memberNames = new Map<string, string>()
   const memberResolve = new Map<string, string>()
   for (const m of members) {
     memberNames.set(m.component, compName.get(m.component) || m.component)
     memberResolve.set(m.component.toLowerCase(), m.component)
+    memberResolve.set((compName.get(m.component) || "").toLowerCase(), m.component)
   }
   for (const n of newComponents) {
     const cid = slugifyId(n.name)
@@ -212,13 +326,7 @@ async function compose(body: Body): Promise<ComposeResult> {
   const goal = typeof parsed.goal === "string" ? parsed.goal.trim().slice(0, 240) : ""
   const description = typeof parsed.description === "string" ? parsed.description.trim().slice(0, 4000) : ""
 
-  getLogger().info("AI solution compose", {
-    members: members.length,
-    newComponents: newComponents.length,
-    flows: flows.length,
-  })
-
-  return { goal, description, delivers, members, newComponents, flows, process }
+  return { goal, description, delivers, members, newComponents, flows, process, dropped, responseChars }
 }
 
 function toStringArray(v: unknown): string[] {

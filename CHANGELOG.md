@@ -7,6 +7,33 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.42.1] — 2026-09-22
+
+### Fixed
+
+- **AI assist silently proposing nothing.** Composing a solution could
+  finish "successfully" with no members, no new components and no
+  process — the wizard then showed an empty proposal without any error
+  (production log: a 175k-character prompt answered in ~1.2k characters
+  with empty arrays). Three causes, three fixes:
+  - The composer was fed the full LLM catalog export (every field,
+    missing-field flags, backlinks). It now gets a **compact digest** —
+    one line per component with the exact id first, plus capabilities,
+    rule count, tags and links — several times smaller and with the ids
+    the model must use made obvious. New `src/lib/catalog-compact.ts`.
+  - **One automatic retry** when the answer contains no members and no
+    new components, restating that a solution is realised by components
+    and that missing parts belong in `newComponents`.
+  - Members the model references by **name or slug** instead of id are
+    now resolved (they were silently dropped); flow endpoints accept
+    `source`/`target` and names too. Output budget raised to 6000 tokens.
+- When the proposal is still empty, the route returns a **diagnostics**
+  line (answer size, unmatched member references) that the wizard shows
+  in place of the generic "nothing matched", with a Retry button; the
+  head of the raw answer is logged so the next case is diagnosable (the
+  `llm_call` log line is truncated by the log shipper because it carries
+  the whole prompt).
+
 ## [0.42.0] — 2026-09-22
 
 ### Added
