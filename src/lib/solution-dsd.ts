@@ -17,7 +17,8 @@ import { getLLM } from "./llm"
 import { buildSolutionMermaid } from "./architecture-mermaid"
 import type { Component, Solution } from "./types"
 import { getLogger } from "./log"
-import { saveDsd, newArtifactId, listDsd, type DsdMode, type DsdSection } from "./dsd-store"
+import { saveDsd, newArtifactId, listDsd, saveCodingBrief, type DsdMode, type DsdSection } from "./dsd-store"
+import { generateCodingBrief } from "./coding-brief"
 import { getAgent, agentInstruction } from "./agents"
 import { getSourceGit, isSourceCodeConfigured } from "./source-git"
 import { codeSearch } from "./code-search"
@@ -38,7 +39,7 @@ import { splitChapters, normTitle, ensureHeading, findMissing, writerBudget } fr
 
 // ----------------------------- job store -----------------------------
 
-export type DsdPhase = "grounding" | "drafting" | "reviewing" | "revising" | "consolidating" | "saving" | "done" | "error"
+export type DsdPhase = "grounding" | "drafting" | "reviewing" | "revising" | "consolidating" | "saving" | "briefing" | "done" | "error"
 
 export interface DsdJob {
   status: "running" | "done" | "error"
@@ -83,6 +84,8 @@ export interface DsdOptions {
   /** Document kind to generate (default "dsd"). Selects the chapter structure,
    *  the agent team and the artifact library. */
   kind?: DocKind
+  /** FS only: also produce the coding-agent brief (default true). */
+  codingBrief?: boolean
 }
 
 // How much of the source document to feed into the prompt. Bounds the
@@ -241,6 +244,28 @@ async function runDsd(
       result.markdown,
       kind
     )
+    // FS: also produce the coding-agent brief — one self-contained work
+    // order derived from the FS and the facts, stored next to it.
+    // Best-effort: a failure here never fails the document job.
+    if (kind === "fs" && options.codingBrief !== false) {
+      setPhase(id, "briefing", { iterations: result.iterations })
+      try {
+        const brief = await generateCodingBrief({
+          solution,
+          components,
+          facts,
+          fsMarkdown: result.markdown,
+          fsTitle: defaultTitle,
+          llm,
+        })
+        await saveCodingBrief(solution.id, artifactId, brief, kind, llm.model)
+      } catch (e) {
+        getLogger().warn("Coding brief generation failed (FS saved without it)", {
+          id,
+          err: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
     jobs.set(id, {
       status: "done",
       phase: "done",

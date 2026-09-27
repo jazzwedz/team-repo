@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, FileText, Paperclip, Loader2, X, FileCode2 } from "lucide-react"
+import { Sparkles, FileText, Paperclip, Loader2, X, FileCode2, Bot } from "lucide-react"
 import { flatChapters, type FlatChapter } from "@/lib/dsd-sections"
 import { allChaptersFor, docShort } from "@/lib/doc-sections"
 import type { DocKind } from "@/lib/doc-kinds"
@@ -30,6 +30,8 @@ export interface DsdGenerateOptions {
   includeChapters: string[]
   /** Read the connected source repo as grounding. Off = much faster. */
   useSourceCode: boolean
+  /** FS only: also generate the coding-agent brief (default true). */
+  codingBrief?: boolean
 }
 
 interface SourceDocMeta {
@@ -97,6 +99,7 @@ export function GenerateDsdModal({
   // Use the connected source repo as grounding (on by default). Turning it
   // off skips the serial repo reads + Code Search queries — much faster.
   const [useSourceCode, setUseSourceCode] = useState(true)
+  const [codingBrief, setCodingBrief] = useState(true)
   useEffect(() => {
     fetch("/api/source-code/status")
       .then((r) => r.json())
@@ -252,7 +255,7 @@ export function GenerateDsdModal({
       if (v) provided[c.id] = v
     }
     const includeChapters = chapters.filter((c) => !excluded.has(c.id)).map((c) => c.id)
-    onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters, useSourceCode })
+    onGenerate({ mode, provided, depth: "detailed", audience: "mixed", language, includeChapters, useSourceCode, codingBrief })
   }
 
   return (
@@ -313,6 +316,32 @@ export function GenerateDsdModal({
                         grounds only on the catalog and any source requirements you attach.
                       </>
                     )}
+                  </span>
+                </span>
+              </span>
+            </label>
+          )}
+
+          {/* FS only: the coding-agent brief — one self-contained Markdown
+              work order (Claude Code style) derived from the FS + facts,
+              stored next to it. On by default. */}
+          {kind === "fs" && (
+            <label className="rounded-md border bg-muted/20 p-3 text-sm flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 mt-0.5 shrink-0"
+                checked={codingBrief}
+                onChange={(e) => setCodingBrief(e.target.checked)}
+              />
+              <span className="flex items-start gap-2">
+                <Bot className="h-4 w-4 mt-0.5 shrink-0 text-blue-600" />
+                <span>
+                  <span className="font-medium">Also generate a coding-agent brief{codingBrief ? "" : " — off"}.</span>{" "}
+                  <span className="text-muted-foreground">
+                    One self-contained Markdown file for a coding agent (Claude Code style):
+                    mission, codebase map with mapped source paths, work items per use case
+                    with rules and tests, open questions to ask first, definition of done.
+                    Stored next to the FS; open or download it from the library.
                   </span>
                 </span>
               </span>

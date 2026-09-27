@@ -66,6 +66,8 @@ export async function POST(
       // Source-code grounding is on by default; the analyst can turn it off
       // (faster — skips the serial repo reads + Code Search queries).
       if (body && typeof body.useSourceCode === "boolean") options.useSourceCode = body.useSourceCode
+      // FS: the coding-agent brief is produced alongside unless turned off.
+      if (body && typeof body.codingBrief === "boolean") options.codingBrief = body.codingBrief
       if (body && Array.isArray(body.includeChapters)) {
         options.includeChapters = body.includeChapters.filter((x: unknown) => typeof x === "string")
       }

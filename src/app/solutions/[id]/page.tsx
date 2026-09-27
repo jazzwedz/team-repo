@@ -10,7 +10,7 @@ import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Boxes, Loader2, AlertCircle, Pencil, Trash2, Info, UploadCloud, ExternalLink, Sparkles } from "lucide-react"
+import { ArrowLeft, Boxes, Loader2, AlertCircle, Pencil, Trash2, Info, UploadCloud, ExternalLink, Sparkles, Bot } from "lucide-react"
 import { MermaidPreview } from "@/components/mermaid-preview"
 import { GeneratedDocModal } from "@/components/GeneratedDocModal"
 import { GenerateDsdModal, type DsdGenerateOptions } from "@/components/GenerateDsdModal"
@@ -91,6 +91,10 @@ export default function SolutionDetailPage() {
   const [artifacts, setArtifacts] = useState<DsdArtifactMeta[]>([])
   // Which artifact's "Publish to Confluence" dialog is open (null = none).
   const [publishArtifact, setPublishArtifact] = useState<DsdArtifactMeta | null>(null)
+  // Coding-agent brief viewer (FS artifacts): which brief is open, and which
+  // artifact's brief is being loaded/regenerated.
+  const [briefView, setBriefView] = useState<{ title: string; markdown: string; artifactId: string } | null>(null)
+  const [briefBusy, setBriefBusy] = useState<string | null>(null)
   const [enrichOpen, setEnrichOpen] = useState(false)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState("")
@@ -188,6 +192,23 @@ export default function SolutionDetailPage() {
       setArtifacts(Array.isArray(d) ? d : [])
     } catch {
       setArtifacts([])
+    }
+  }
+
+  // Open (or, with regenerate, re-derive) the coding brief of an FS artifact.
+  const openBrief = async (a: DsdArtifactMeta, regenerate = false) => {
+    setBriefBusy(a.id)
+    try {
+      const url = `/api/solutions/${encodeURIComponent(id)}/docs/${docKind}/artifacts/${encodeURIComponent(a.id)}/brief`
+      const r = await fetch(url, regenerate ? { method: "POST" } : undefined)
+      const j = await r.json().catch(() => null)
+      if (!r.ok) throw new Error((j && j.error) || `Failed (${r.status})`)
+      setBriefView({ title: `Coding brief — ${a.title || DOC_KINDS[docKind].short}`, markdown: j.markdown, artifactId: a.id })
+      if (regenerate) loadArtifacts()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load the coding brief")
+    } finally {
+      setBriefBusy(null)
     }
   }
 
@@ -785,6 +806,18 @@ export default function SolutionDetailPage() {
                         )}
                         <div className="ml-auto flex gap-2">
                           <Button size="sm" variant="outline" onClick={() => openArtifact(a.id)}>Open</Button>
+                          {docKind === "fs" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openBrief(a, !a.codingBrief)}
+                              disabled={briefBusy === a.id}
+                              title={a.codingBrief ? "Open the coding-agent brief generated from this FS" : "Generate a coding-agent brief from this FS"}
+                            >
+                              {briefBusy === a.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Bot className="h-4 w-4 mr-1" />}
+                              {a.codingBrief ? "Coding brief" : "Generate brief"}
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" onClick={() => setPublishArtifact(a)}>
                             <UploadCloud className="h-4 w-4 mr-1" />
                             {a.confluence ? "Re-publish" : "Publish"}
@@ -800,6 +833,28 @@ export default function SolutionDetailPage() {
           </div>
         </div>
       )}
+
+      <GeneratedDocModal
+        open={!!briefView}
+        onOpenChange={(o) => {
+          if (!o) setBriefView(null)
+        }}
+        title={briefView?.title || "Coding brief"}
+        badge="Coding brief"
+        markdown={briefView?.markdown || ""}
+        download={briefView ? { filename: `${id}-coding-brief.md` } : undefined}
+        regenerate={
+          briefView
+            ? {
+                onRegenerate: () => {
+                  const a = artifacts.find((x) => x.id === briefView.artifactId)
+                  if (a) openBrief(a, true)
+                },
+                busy: briefBusy === briefView.artifactId,
+              }
+            : undefined
+        }
+      />
 
       <GeneratedDocModal
         open={showDocModal}

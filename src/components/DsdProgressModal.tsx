@@ -17,7 +17,7 @@ import type { ReactNode } from "react"
 type Phase = "grounding" | "drafting" | "reviewing" | "revising" | "consolidating" | "saving" | "done" | string
 
 const ORDER: Record<string, number> = {
-  grounding: 0, drafting: 1, reviewing: 2, revising: 3, consolidating: 4, saving: 5, done: 6,
+  grounding: 0, drafting: 1, reviewing: 2, revising: 3, consolidating: 4, saving: 5, briefing: 6, done: 7,
 }
 
 const FRIENDLY: Record<string, string> = {
@@ -27,6 +27,7 @@ const FRIENDLY: Record<string, string> = {
   revising: "Writers are resolving what the critics flagged…",
   consolidating: "The lead editor is stitching it into one document…",
   saving: "Filing it into your document library…",
+  briefing: "Writing the coding-agent brief from the specification…",
   done: "Document delivered.",
 }
 

@@ -7,6 +7,31 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.43.0] — 2026-09-28
+
+### Added
+
+- **Coding-agent brief alongside the FS.** Generating a Functional
+  Specification now also produces a **single self-contained Markdown work
+  order for a coding agent** (Claude Code style), stored next to the FS
+  as `<artifact>.brief.md` and shown in the library as "Coding brief"
+  (open, Download .md, Regenerate). Derived from the FS and the catalog
+  facts: mission; rules of engagement for the agent; **codebase map**
+  (members with disposition, status and the mapped `source.paths` /
+  repo, external dependencies marked read-only); scope; **work items per
+  use case** (goal, actors, flow to implement, RG ids, implementation
+  notes, "done when" from the FS acceptance criteria, checklist);
+  **management-rules implementation register** (formula / Given-When-Then,
+  status, applies-in, test name); non-functional constraints; the FS
+  acceptance criteria as the test plan; **open questions to STOP and ask**;
+  definition of done; suggested order of work; data & interfaces appendix.
+  The deterministic parts come from the facts and FS chapters; one model
+  call writes the narrative parts (mission, per-use-case notes, questions,
+  plan) and the brief is still produced when that call fails. Toggle in
+  the Generate dialog (FS, on by default); FS documents made earlier get a
+  "Generate brief" button. New `src/lib/coding-brief.ts`, route
+  `…/docs/fs/artifacts/[id]/brief`.
+
 ## [0.42.2] — 2026-09-22
 
 ### Changed

@@ -81,6 +81,9 @@ export interface DsdArtifactMeta {
   feedback?: DsdFeedback[]
   /** Set once the DSD has been published to Confluence. */
   confluence?: DsdConfluenceLink
+  /** Set once a coding-agent brief has been generated next to this
+   *  document (FS): stored as `<artifactId>.brief.md` in the same folder. */
+  codingBrief?: { createdAt: string; model?: string }
 }
 
 export interface DsdArtifact extends DsdArtifactMeta {
@@ -131,7 +134,8 @@ export async function listDsd(solutionId: string, kind: DocKind = "dsd"): Promis
   } catch {
     return []
   }
-  const files = entries.filter((e) => e.path.endsWith(".md"))
+  // Companion files (`<id>.brief.md`) are not artifacts of their own.
+  const files = entries.filter((e) => e.path.endsWith(".md") && !e.path.endsWith(".brief.md"))
   const metas = await Promise.all(
     files.map(async (f) => {
       try {
@@ -167,6 +171,61 @@ export async function saveDsd(meta: DsdArtifactMeta, markdown: string, kind: Doc
     content,
     `docs: add ${shortOf(kind)} ${meta.id} for ${meta.solutionId}`
   )
+}
+
+// ---- Coding brief: a companion file next to an FS artifact ----
+
+function briefPathFor(solutionId: string, artifactId: string, kind: DocKind): string {
+  return `${DOC_KINDS[kind].artifactDir}/${solutionId}/${artifactId}.brief.md`
+}
+
+/** Store the coding-agent brief next to its document and flag the document. */
+export async function saveCodingBrief(
+  solutionId: string,
+  artifactId: string,
+  markdown: string,
+  kind: DocKind = "fs",
+  model?: string
+): Promise<void> {
+  if (!SAFE_ARTIFACT_ID.test(artifactId)) throw new GitNotFoundError("Invalid artifact id")
+  const git = getGit()
+  let briefSha: string | undefined
+  try {
+    briefSha = (await git.getFile(briefPathFor(solutionId, artifactId, kind))).sha
+  } catch {
+    briefSha = undefined
+  }
+  await git.putFile(
+    briefPathFor(solutionId, artifactId, kind),
+    markdown.trim() + "\n",
+    `docs: coding brief for ${shortOf(kind)} ${artifactId} (${solutionId})`,
+    briefSha
+  )
+  const file = await git.getFile(pathFor(solutionId, artifactId, kind))
+  const { meta, markdown: body } = parse(file.content)
+  const m = meta as DsdArtifactMeta
+  m.codingBrief = { createdAt: new Date().toISOString(), ...(model ? { model } : {}) }
+  await git.putFile(
+    pathFor(solutionId, artifactId, kind),
+    serialize(m, body),
+    `docs: mark ${shortOf(kind)} ${artifactId} with its coding brief`,
+    file.sha
+  )
+}
+
+/** The stored coding brief, or null when none exists. */
+export async function getCodingBrief(
+  solutionId: string,
+  artifactId: string,
+  kind: DocKind = "fs"
+): Promise<{ markdown: string } | null> {
+  if (!SAFE_ARTIFACT_ID.test(artifactId)) return null
+  try {
+    const f = await getGit().getFile(briefPathFor(solutionId, artifactId, kind))
+    return { markdown: f.content }
+  } catch {
+    return null
+  }
 }
 
 // Rebuild the "## Table of Contents" list from the current H2 headings so it

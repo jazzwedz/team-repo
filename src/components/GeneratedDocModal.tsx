@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { FileText, Copy, Check, Send, X, Printer, ThumbsUp, ThumbsDown, Loader2, Pencil, Save } from "lucide-react"
+import { FileText, Copy, Check, Send, X, Printer, ThumbsUp, ThumbsDown, Loader2, Pencil, Save, Download, RefreshCw } from "lucide-react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { MermaidPreview } from "@/components/mermaid-preview"
@@ -125,6 +125,10 @@ interface Props {
   editable?: { onSave: (markdown: string) => Promise<string | void>; busy?: boolean }
   /** Visual theme: "default" (technical doc) or "spec" (formal specification look). */
   theme?: DocTheme
+  /** When set, a "Download .md" button saves the markdown under this file name. */
+  download?: { filename: string }
+  /** When set, a "Regenerate" button re-derives the document (e.g. a coding brief). */
+  regenerate?: { onRegenerate: () => void; busy?: boolean }
 }
 
 function escapeHtml(s: string): string {
@@ -133,8 +137,20 @@ function escapeHtml(s: string): string {
   )
 }
 
-export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, publish, feedback, editable, theme = "default" }: Props) {
+export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, publish, feedback, editable, theme = "default", download, regenerate }: Props) {
   const prose = theme === "spec" ? SPEC_PROSE : DOC_PROSE
+
+  // Download the raw markdown as a file (for briefs handed to a coding agent).
+  const downloadMd = () => {
+    if (!markdown || !download) return
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = download.filename
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
   const [copied, setCopied] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -264,6 +280,18 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
                   <Printer className="h-4 w-4 mr-1" />
                   Save as PDF
                 </Button>
+                {download && (
+                  <Button variant="outline" size="sm" onClick={downloadMd} title={`Download ${download.filename}`}>
+                    <Download className="h-4 w-4 mr-1" />
+                    Download .md
+                  </Button>
+                )}
+                {regenerate && (
+                  <Button variant="outline" size="sm" onClick={regenerate.onRegenerate} disabled={regenerate.busy} title="Re-derive this document">
+                    {regenerate.busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    Regenerate
+                  </Button>
+                )}
                 {editable && (
                   <Button variant="outline" size="sm" onClick={startEdit} title="Edit the document (the table of contents is kept derived)">
                     <Pencil className="h-4 w-4 mr-1" />
