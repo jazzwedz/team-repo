@@ -841,6 +841,7 @@ export default function SolutionDetailPage() {
         }}
         title={briefView?.title || "Coding brief"}
         badge="Coding brief"
+        theme="terminal"
         markdown={briefView?.markdown || ""}
         download={briefView ? { filename: `${id}-coding-brief.md` } : undefined}
         regenerate={

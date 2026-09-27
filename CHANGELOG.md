@@ -7,6 +7,29 @@ and this project loosely follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.43.1] — 2026-09-28
+
+### Changed
+
+- **Coding brief looks like a terminal.** The brief renders with a new
+  "terminal" document theme — dark monospace page, prompt-style title
+  (`>`), amber/green headings, a `❯ agent run --brief …` line and a green
+  `$ CODING BRIEF` badge — so it is unmistakably a different document from
+  the specification it came from. Save as PDF uses a light monospace
+  variant.
+
+### Fixed
+
+- **Brief (and FS) ending mid-sentence.** When an FS chapter was cut by the
+  writer's output budget, the brief quoted it as-is and so also ended on a
+  half table row. The brief now drops a dangling last line of a quoted
+  chapter and marks the spot "cut off in the FS"; model-numbered plan and
+  question items no longer get double numbers ("1. 1. …"). In the
+  generator, a truncated last chapter is now detected (unterminated table
+  row, open code fence, dangling connector) and re-written in the targeted
+  second call together with any missing chapters; writer budgets raised
+  (up to 12k tokens per group, 14k on detailed).
+
 ## [0.43.0] — 2026-09-28
 
 ### Added

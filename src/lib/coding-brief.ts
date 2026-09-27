@@ -18,7 +18,7 @@
 
 import type { Component, Solution } from "./types"
 import { fsSeeds, ruleDetail, type FsSeeds } from "./fs-usecases"
-import { normTitle } from "./doc-chapters"
+import { normTitle, looksTruncated } from "./doc-chapters"
 import { parseLlmJson } from "./llm/json"
 
 export interface CodingBriefInput {
@@ -54,12 +54,27 @@ export function extractChapter(md: string, titleLike: string): string {
     if (!m) continue
     const key = normTitle(m[1])
     if (key === want || key.includes(want)) {
-      const body = part.replace(/^##\s+.+\n?/, "").trim()
-      return body.length > CHAPTER_CAP ? body.slice(0, CHAPTER_CAP) + "\n\n…(truncated — see the FS)" : body
+      let body = part.replace(/^##\s+.+\n?/, "").trim()
+      if (body.length > CHAPTER_CAP) body = body.slice(0, CHAPTER_CAP).trim() + "\n\n_(shortened here — see the FS for the rest)_"
+      return tidyEnd(body)
     }
   }
   return ""
 }
+
+// A quoted FS chapter can itself end mid-way when the FS writer ran out of
+// output budget. Drop the dangling last line (a half table row, a cut
+// sentence) so the brief always ends cleanly, and say so.
+function tidyEnd(body: string): string {
+  if (!looksTruncated(body)) return body
+  const lines = body.trimEnd().split("\n")
+  while (lines.length && looksTruncated(lines.join("\n"))) lines.pop()
+  const kept = lines.join("\n").trimEnd()
+  return `${kept}${kept ? "\n\n" : ""}_(cut off in the FS at this point — see the FS)_`
+}
+
+/** Model-written list items sometimes carry their own numbering; strip it. */
+const unnumber = (s: string) => s.replace(/^\s*(?:\d+[.)]\s*)+/, "").trim()
 
 /** Table rows (or bullet lines) of a chapter that mention the given id. */
 function linesMentioning(body: string, id: string): string[] {
@@ -119,8 +134,10 @@ async function narrative(input: CodingBriefInput, seeds: FsSeeds): Promise<Narra
   return {
     mission: typeof parsed.mission === "string" ? parsed.mission.trim() : undefined,
     ucNotes: notes,
-    openQuestions: Array.isArray(parsed.openQuestions) ? parsed.openQuestions.filter((x) => typeof x === "string" && x.trim()) : [],
-    plan: Array.isArray(parsed.plan) ? parsed.plan.filter((x) => typeof x === "string" && x.trim()) : [],
+    openQuestions: Array.isArray(parsed.openQuestions)
+      ? parsed.openQuestions.filter((x) => typeof x === "string" && x.trim()).map(unnumber)
+      : [],
+    plan: Array.isArray(parsed.plan) ? parsed.plan.filter((x) => typeof x === "string" && x.trim()).map(unnumber) : [],
   }
 }
 

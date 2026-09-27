@@ -87,8 +87,50 @@ export function findMissing(md: string, chapters: DsdChapter[]): DsdChapter[] {
  * chapters — the last ones simply never arrived.
  */
 export function writerBudget(chapters: number, depth?: "concise" | "standard" | "detailed"): number {
-  const base = Math.min(7000, 1500 + 1700 * Math.max(1, chapters))
-  if (depth === "detailed") return Math.min(8000, Math.round(base * 1.25))
+  const base = Math.min(12000, 1500 + 2200 * Math.max(1, chapters))
+  if (depth === "detailed") return Math.min(14000, Math.round(base * 1.25))
   if (depth === "concise") return Math.round(base * 0.8)
   return base
+}
+
+/**
+ * Heuristic: does this markdown end mid-way (the model ran out of output
+ * budget)? True for an unterminated table row, an open code fence, a bare
+ * trailing heading, or a last line ending on a dangling connector.
+ */
+export function looksTruncated(md: string): boolean {
+  const text = (md || "").trimEnd()
+  if (!text) return false
+  const fences = (text.match(/^```/gm) || []).length
+  if (fences % 2 === 1) return true
+  const lines = text.split("\n")
+  const last = lines[lines.length - 1].trim()
+  if (last.startsWith("|") && !last.endsWith("|")) return true
+  if (/^#{1,6}\s*$/.test(last) || /^#{1,6}\s+\S/.test(last)) return true
+  if (/[,;:(—–-]$/.test(last)) return true
+  return false
+}
+
+/** Of the expected chapters present in `md`, the one that appears last —
+ *  if the text looks truncated, that is the chapter that got cut. */
+export function lastChapterTruncated(md: string, chapters: DsdChapter[]): DsdChapter | undefined {
+  if (!looksTruncated(md)) return undefined
+  const blocks = splitChapters(md, chapters)
+  let best: { c: DsdChapter; at: number } | undefined
+  for (const c of chapters) {
+    const b = blocks.get(normTitle(c.title))
+    if (!b) continue
+    const at = md.lastIndexOf(b)
+    if (at >= 0 && (!best || at > best.at)) best = { c, at }
+  }
+  return best?.c
+}
+
+/** Remove one chapter's block from a writer's output (so a re-written
+ *  version appended later is the one that gets picked up). */
+export function removeChapter(md: string, chapter: DsdChapter): string {
+  const block = splitChapters(md, [chapter]).get(normTitle(chapter.title))
+  if (!block) return md
+  const at = md.lastIndexOf(block)
+  return at < 0 ? md : (md.slice(0, at) + md.slice(at + block.length)).trim()
 }

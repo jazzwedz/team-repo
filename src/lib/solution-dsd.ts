@@ -35,7 +35,7 @@ import { getDocStructure } from "./dsd-structure-store"
 import { leadIdFor, docLabel, docShort } from "./doc-sections"
 import type { DocKind } from "./doc-kinds"
 import { fsSeeds, renderFsSeedFacts, ruleDetail, generateUseCasesChapter } from "./fs-usecases"
-import { splitChapters, normTitle, ensureHeading, findMissing, writerBudget } from "./doc-chapters"
+import { splitChapters, normTitle, ensureHeading, findMissing, writerBudget, lastChapterTruncated, removeChapter } from "./doc-chapters"
 
 // ----------------------------- job store -----------------------------
 
@@ -448,7 +448,16 @@ async function runTeamDsd(
         // answer: write just those in a second, targeted call and append —
         // instead of shipping "(not generated)".
         const missing = findMissing(writerOut, unlocked)
-        if (missing.length > 0 && missing.length < unlocked.length) {
+        // A truncated answer also leaves its LAST chapter cut mid-way (an
+        // unterminated table row, a dangling sentence): drop that block and
+        // re-write it with the others.
+        const cut = lastChapterTruncated(writerOut, unlocked)
+        if (cut) {
+          writerOut = removeChapter(writerOut, cut)
+          if (!missing.some((c) => c.id === cut.id)) missing.push(cut)
+          missing.sort((a, b) => unlocked.findIndex((c) => c.id === a.id) - unlocked.findIndex((c) => c.id === b.id))
+        }
+        if (missing.length > 0 && (cut || missing.length < unlocked.length)) {
           try {
             const more = (
               await llm.complete({
@@ -460,6 +469,7 @@ async function runTeamDsd(
             getLogger().info("Doc section writer: re-wrote missing chapters", {
               group: g.agentId,
               missing: missing.map((c) => c.title),
+              truncated: cut?.title,
             })
           } catch (e) {
             getLogger().warn("Doc section writer: retry of missing chapters failed", {

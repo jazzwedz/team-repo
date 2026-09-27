@@ -31,7 +31,14 @@ const DOC_PROSE =
 const SPEC_PROSE =
   "max-w-none [&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:border-l-8 [&_h1]:border-red-700 [&_h1]:pl-4 [&_h1]:py-1 [&_h1]:mb-6 [&_h1]:text-gray-900 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:border-b-2 [&_h2]:border-red-700 [&_h2]:pb-1 [&_h2]:text-gray-900 [&_h3]:text-base [&_h3]:font-bold [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-red-800 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:my-2 [&_p]:text-gray-700 [&_ul]:pl-6 [&_ul]:my-2 [&_ol]:pl-6 [&_ol]:my-2 [&_li]:text-sm [&_li]:my-1 [&_li]:text-gray-700 [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:text-gray-800 [&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border-0 [&_th]:border-b-2 [&_th]:border-red-700 [&_th]:bg-transparent [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wide [&_th]:font-semibold [&_th]:text-gray-700 [&_td]:border-0 [&_td]:border-b [&_td]:border-gray-200 [&_td]:px-3 [&_td]:py-1.5 [&_td]:text-sm [&_td]:align-top [&_tbody_tr:nth-child(odd)]:bg-gray-50 [&_strong]:font-semibold [&_strong]:text-gray-900 [&_em]:not-italic [&_em]:font-semibold [&_em]:text-gray-600 [&_hr]:my-6 [&_hr]:border-red-200 [&_blockquote]:border-l-4 [&_blockquote]:border-red-700 [&_blockquote]:bg-red-50 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:my-4 [&_blockquote]:not-italic [&_blockquote_p]:text-red-900 [&_blockquote_p]:my-1"
 
-export type DocTheme = "default" | "spec"
+// "terminal" theme — for the coding-agent brief: a dark, monospace,
+// CLI-like rendering (prompt-style title, amber/green headings, dim table
+// rules) so it reads at a glance as a different kind of document from the
+// specification it was derived from.
+const TERMINAL_PROSE =
+  "max-w-none font-mono text-[13px] leading-relaxed text-slate-200 [&_h1]:text-emerald-400 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-4 [&_h1]:before:content-['>_'] [&_h1]:before:text-emerald-600 [&_h2]:text-amber-300 [&_h2]:text-[13px] [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-widest [&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:border-b [&_h2]:border-slate-700 [&_h2]:pb-1 [&_h2]:before:content-['##_'] [&_h2]:before:text-slate-500 [&_h3]:text-emerald-300 [&_h3]:text-[13px] [&_h3]:font-bold [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:before:content-['###_'] [&_h3]:before:text-slate-500 [&_p]:my-2 [&_p]:text-slate-200 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-600 [&_blockquote]:pl-3 [&_blockquote]:my-3 [&_blockquote_p]:text-slate-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-2 [&_li]:my-1 [&_li]:text-slate-200 [&_li]:marker:text-slate-500 [&_code]:bg-slate-800 [&_code]:text-emerald-300 [&_code]:px-1 [&_code]:rounded [&_code]:text-[12px] [&_pre]:bg-slate-900 [&_pre]:border [&_pre]:border-slate-700 [&_pre]:p-3 [&_pre]:rounded [&_pre]:my-3 [&_pre_code]:bg-transparent [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_table]:text-[12px] [&_th]:border [&_th]:border-slate-700 [&_th]:bg-slate-800 [&_th]:text-amber-200 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-slate-800 [&_td]:px-2 [&_td]:py-1 [&_td]:align-top [&_strong]:text-white [&_strong]:font-bold [&_em]:text-slate-400 [&_a]:text-sky-300 [&_hr]:border-slate-700 [&_input]:accent-emerald-500 [&_input]:mr-1"
+
+export type DocTheme = "default" | "spec" | "terminal"
 
 // Print (Save as PDF) stylesheet per theme — mirrors the on-screen look.
 function printCss(theme: DocTheme): string {
@@ -43,6 +50,17 @@ function printCss(theme: DocTheme): string {
     `pre{background:#f3f4f6;padding:12px;border-radius:6px;overflow:auto}` +
     `svg{max-width:100%;height:auto}` +
     `h2,h3{page-break-after:avoid}table,pre,blockquote{page-break-inside:avoid}`
+  if (theme === "terminal") {
+    return (
+      base +
+      `body{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#111827}` +
+      `h1{font-size:18px;margin:0 0 16px}h1:before{content:"> ";color:#059669}` +
+      `h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid #d1d5db;padding-bottom:4px;margin-top:28px}h2:before{content:"## ";color:#9ca3af}` +
+      `h3{font-size:13px;margin-top:18px}h3:before{content:"### ";color:#9ca3af}` +
+      `p,li{font-size:12.5px}th,td{border:1px solid #d1d5db;padding:4px 8px;font-size:11.5px;text-align:left;vertical-align:top}th{background:#f3f4f6}` +
+      `blockquote{border-left:2px solid #9ca3af;margin:12px 0;padding-left:12px;color:#4b5563}`
+    )
+  }
   if (theme === "spec") {
     return (
       base +
@@ -138,7 +156,8 @@ function escapeHtml(s: string): string {
 }
 
 export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, publish, feedback, editable, theme = "default", download, regenerate }: Props) {
-  const prose = theme === "spec" ? SPEC_PROSE : DOC_PROSE
+  const prose = theme === "spec" ? SPEC_PROSE : theme === "terminal" ? TERMINAL_PROSE : DOC_PROSE
+  const paper = theme === "terminal" ? "bg-[#0b0f14]" : "bg-white"
 
   // Download the raw markdown as a file (for briefs handed to a coding agent).
   const downloadMd = () => {
@@ -253,8 +272,12 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
               <FileText className="h-5 w-5" />
               <span>{title}</span>
               {badge && (
-                <span className="inline-flex items-center px-3 py-1 rounded text-xs font-semibold bg-gray-900 text-white uppercase tracking-wide">
-                  {badge}
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded text-xs font-semibold uppercase tracking-wide ${
+                    theme === "terminal" ? "bg-emerald-500 text-black font-mono" : "bg-gray-900 text-white"
+                  }`}
+                >
+                  {theme === "terminal" ? `$ ${badge}` : badge}
                 </span>
               )}
             </DialogTitle>
@@ -427,7 +450,13 @@ export function GeneratedDocModal({ open, onOpenChange, title, badge, markdown, 
             )}
           </div>
         ) : (
-        <div className="flex-1 overflow-y-auto px-8 py-6 bg-white">
+        <div className={`flex-1 overflow-y-auto px-8 py-6 ${paper}`}>
+          {theme === "terminal" && (
+            <div className="font-mono text-xs text-slate-500 mb-4 select-none">
+              <span className="text-emerald-500">❯</span> agent run --brief {download?.filename || "brief.md"}
+              <span className="ml-2 text-slate-600">— one file, self-contained; hand it to a coding agent as its task</span>
+            </div>
+          )}
           <div ref={contentRef} className={prose}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
               {markdown || ""}
